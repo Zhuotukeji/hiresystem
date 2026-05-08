@@ -1,0 +1,388 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  HR_LEAD
+  RECRUITER
+  HIRING_MANAGER
+  INTERVIEWER
+  EXECUTIVE
+}
+
+enum CandidateStatus {
+  NEW
+  TO_CONTACT
+  CONTACTED
+  REPLIED
+  INTERESTED
+  NOT_NOW
+  IN_PROCESS
+  OFFERED
+  HIRED
+  REJECTED
+  DO_NOT_CONTACT
+}
+
+enum JobPriority {
+  P0
+  P1
+  P2
+}
+
+enum JobStatus {
+  OPEN
+  PAUSED
+  CLOSED
+}
+
+enum ApplicationStage {
+  NEW
+  HR_SCREEN
+  MANAGER_REVIEW
+  FIRST_INTERVIEW
+  SECOND_INTERVIEW
+  FINAL_INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+  TALENT_POOL
+}
+
+enum AiTaskType {
+  RESUME_EVALUATION
+  JD_CHAT
+  JD_GENERATION
+  INTERVIEW_KIT
+  STAGE_HANDOFF
+  RESUME_PARSE
+}
+
+enum AiTaskStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  name         String
+  email        String     @unique
+  passwordHash String
+  role         UserRole
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  ownedCandidates Candidate[] @relation("CandidateOwner")
+  managedJobs  Job[]      @relation("HiringManager")
+  recruitedJobs Job[]     @relation("Recruiter")
+  interviews   Interview[]
+}
+
+model Candidate {
+  id                   String          @id @default(cuid())
+  name                 String
+  phone                String?
+  email                String?
+  wechat               String?
+  linkedinUrl          String?
+  maimaiUrl            String?
+  bossUrl              String?
+  githubUrl            String?
+  currentCompanyId     String?
+  currentCompany       TargetCompany? @relation(fields: [currentCompanyId], references: [id])
+  currentCompanyName   String?
+  currentTitle         String?
+  currentLevel         String?
+  city                 String?
+  yearsOfExperience    Int?
+  educationSummary     String?
+  expectedSalary       String?
+  currentSalary        String?
+  availability         String?
+  jobIntention         String?
+  sourceChannel        String?
+  sourceOwnerId        String?
+  sourceOwner          User?           @relation("CandidateOwner", fields: [sourceOwnerId], references: [id])
+  resumeFileUrl        String?
+  resumeText           String?
+  aiSummary            String?
+  tags                 String[]        @default([])
+  status               CandidateStatus @default(NEW)
+  privacyConsentStatus String           @default("UNKNOWN")
+  applications         Application[]
+  evaluations          CandidateEvaluation[]
+  interviews           Interview[]
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  @@index([currentCompanyName])
+  @@index([status])
+}
+
+model TargetCompany {
+  id                    String      @id @default(cuid())
+  name                  String      @unique
+  aliases               String[]    @default([])
+  industry              String?
+  companyType           String?
+  city                  String?
+  size                  String?
+  financingStage        String?
+  businessTags          String[]    @default([])
+  techTags              String[]    @default([])
+  talentQualityLevel    String?
+  sourcingPriority      String?
+  targetRoles           String[]    @default([])
+  knownDepartments      Json?
+  knownLevels           Json?
+  compensationLevel     String?
+  riskNotes             String?
+  relationshipOwnerId   String?
+  candidates            Candidate[]
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+}
+
+model Job {
+  id              String        @id @default(cuid())
+  title           String
+  department      String?
+  hiringManagerId String?
+  hiringManager   User?         @relation("HiringManager", fields: [hiringManagerId], references: [id])
+  recruiterId     String?
+  recruiter       User?         @relation("Recruiter", fields: [recruiterId], references: [id])
+  headcount       Int           @default(1)
+  priority        JobPriority   @default(P1)
+  status          JobStatus     @default(OPEN)
+  city            String?
+  salaryMin       Int?
+  salaryMax       Int?
+  jd              String?
+  profile         JobProfile?
+  applications    Application[]
+  evaluations     CandidateEvaluation[]
+  interviews      Interview[]
+  jdVersions      JdVersion[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model JobProfile {
+  id                   String   @id @default(cuid())
+  jobId                String   @unique
+  job                  Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  mission              String?
+  mustHaveSkills       String[] @default([])
+  niceToHaveSkills     String[] @default([])
+  targetCompanies      String[] @default([])
+  excludedCompanies    String[] @default([])
+  targetTitles         String[] @default([])
+  targetLevels         String[] @default([])
+  targetYearsMin       Int?
+  targetYearsMax       Int?
+  keyProjectExperience String[] @default([])
+  knockoutRules        String[] @default([])
+  flexibleRules        String[] @default([])
+  screeningQuestions   String[] @default([])
+  interviewDimensions  String[] @default([])
+  passScore            Int      @default(75)
+  yellowScoreMin       Int      @default(60)
+  yellowScoreMax       Int      @default(74)
+  createdBy            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model Application {
+  id                String           @id @default(cuid())
+  candidateId       String
+  candidate         Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId             String
+  job               Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  stage             ApplicationStage @default(NEW)
+  ownerId           String?
+  source            String?
+  matchScore        Int?
+  recommendation    String?
+  rejectionReason   String?
+  nextAction        String?
+  nextActionDueAt   DateTime?
+  evaluations       CandidateEvaluation[]
+  interviews        Interview[]
+  interviewKits     InterviewKit[]
+  handoffPackets    StageHandoffPacket[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@unique([candidateId, jobId])
+  @@index([stage])
+}
+
+model AiTask {
+  id                   String       @id @default(cuid())
+  taskType             AiTaskType
+  status               AiTaskStatus @default(PENDING)
+  provider             String       @default("sub2api")
+  modelName            String?
+  inputSnapshot        Json?
+  outputSnapshot       Json?
+  errorMessage         String?
+  tokenUsagePrompt     Int?
+  tokenUsageCompletion Int?
+  costEstimate         Decimal?
+  createdBy            String?
+  createdAt            DateTime     @default(now())
+  completedAt          DateTime?
+  evaluations          CandidateEvaluation[]
+  interviewKits        InterviewKit[]
+  jdVersions           JdVersion[]
+}
+
+model CandidateEvaluation {
+  id                  String      @id @default(cuid())
+  candidateId          String
+  candidate            Candidate   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId                String
+  job                  Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  applicationId        String?
+  application          Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  aiTaskId             String?
+  aiTask               AiTask?     @relation(fields: [aiTaskId], references: [id])
+  matchScore           Int
+  level                String
+  recommendation       String
+  summary              String
+  scoreBreakdown       Json
+  reasons              String[]    @default([])
+  risks                String[]    @default([])
+  questionsToConfirm   String[]    @default([])
+  evidence             Json?
+  missingInformation   String[]    @default([])
+  suggestedNextStep    String?
+  manualDecision       String?
+  manualReason         String?
+  createdBy            String?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+}
+
+model JdChatSession {
+  id               String          @id @default(cuid())
+  jobId            String?
+  userId           String?
+  status           String          @default("active")
+  finalJdVersionId String?
+  messages         JdChatMessage[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+}
+
+model JdChatMessage {
+  id                String        @id @default(cuid())
+  sessionId         String
+  session           JdChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role              String
+  content           String
+  structuredPayload Json?
+  createdAt         DateTime      @default(now())
+}
+
+model JdVersion {
+  id                 String   @id @default(cuid())
+  jobId              String
+  job                Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  aiTaskId           String?
+  aiTask             AiTask?  @relation(fields: [aiTaskId], references: [id])
+  versionNo          Int
+  sourceType         String
+  jdContent          String
+  jobProfileSnapshot Json?
+  promptSnapshot     Json?
+  createdBy          String?
+  createdAt          DateTime @default(now())
+}
+
+model Interview {
+  id             String             @id @default(cuid())
+  applicationId  String
+  application    Application        @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  candidateId    String
+  candidate      Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId          String
+  job            Job                @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  interviewRound String
+  interviewerId  String?
+  interviewer    User?              @relation(fields: [interviewerId], references: [id])
+  scheduledAt    DateTime?
+  status         InterviewStatus    @default(SCHEDULED)
+  feedback       InterviewFeedback?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+}
+
+model InterviewFeedback {
+  id            String    @id @default(cuid())
+  interviewId   String    @unique
+  interview     Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  interviewerId String?
+  scores        Json
+  conclusion    String
+  strengths     String[]  @default([])
+  weaknesses    String[]  @default([])
+  evidence      String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model InterviewKit {
+  id                    String      @id @default(cuid())
+  applicationId          String
+  application            Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  candidateId            String
+  jobId                  String
+  stage                  String
+  aiTaskId               String?
+  aiTask                 AiTask?     @relation(fields: [aiTaskId], references: [id])
+  goal                   String
+  focusAreas             String[]    @default([])
+  mustAskQuestions       Json
+  resumeBasedQuestions   Json
+  caseQuestions          Json
+  goodSignals            String[]    @default([])
+  badSignals             String[]    @default([])
+  passCriteria           String[]    @default([])
+  redFlags               String[]    @default([])
+  createdBy              String?
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+}
+
+model StageHandoffPacket {
+  id                       String      @id @default(cuid())
+  applicationId             String
+  application               Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStage                 String
+  toStage                   String
+  candidateSummary          String
+  whyAdvance                String[]    @default([])
+  remainingRisks            String[]    @default([])
+  nextInterviewFocus        String[]    @default([])
+  previousFeedbackSummary   String?
+  recommendedQuestions      Json?
+  createdBy                 String?
+  createdAt                 DateTime    @default(now())
+}

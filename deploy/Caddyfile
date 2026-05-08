@@ -1,0 +1,15 @@
+{
+  email admin@example.com
+}
+
+:80 {
+  encode gzip
+
+  handle_path /api/* {
+    reverse_proxy api:3000
+  }
+
+  handle {
+    reverse_proxy web:80
+  }
+}

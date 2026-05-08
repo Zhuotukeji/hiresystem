@@ -1,0 +1,20 @@
+{
+  "name": "hiresystem",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css}\"",
+    "db:generate": "pnpm --filter @hiresystem/api prisma:generate",
+    "db:migrate": "pnpm --filter @hiresystem/api prisma:migrate",
+    "db:seed": "pnpm --filter @hiresystem/api prisma:seed"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  }
+}
