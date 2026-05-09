@@ -29,3 +29,9 @@ export class UpdateUserDto {
   @IsBoolean()
   isActive?: boolean;
 }
+
+export class ResetUserPasswordDto {
+  @IsString()
+  @MinLength(8)
+  password!: string;
+}

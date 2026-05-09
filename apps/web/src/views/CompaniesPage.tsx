@@ -1,18 +1,22 @@
-import { Button, Card, Form, Input, Modal, Space, Table, Tag, message } from "antd";
+import { Button, Card, Form, Input, Modal, Popconfirm, Space, Table, Tag, message } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, ApiList } from "../api/client";
 import { TargetCompany } from "../api/types";
+import { canDeleteResource } from "../domain/permissions";
+import { useCurrentPermissions } from "../hooks/useCurrentUser";
 import { PageHeader } from "../ui/PageHeader";
 
 export function CompaniesPage() {
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
+  const permissions = useCurrentPermissions();
   const { data, isLoading } = useQuery({
     queryKey: ["companies"],
     queryFn: () => api.get<ApiList<TargetCompany>>("/target-companies")
   });
+
   const createMutation = useMutation({
     mutationFn: (values: unknown) => api.post("/target-companies", values),
     onSuccess: () => {
@@ -20,8 +24,20 @@ export function CompaniesPage() {
       setOpen(false);
       form.resetFields();
       queryClient.invalidateQueries({ queryKey: ["companies"] });
-    }
+    },
+    onError: (error) => message.error(error instanceof Error ? error.message : "创建失败")
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/target-companies/${id}`),
+    onSuccess: () => {
+      message.success("目标公司已删除");
+      queryClient.invalidateQueries({ queryKey: ["companies"] });
+    },
+    onError: (error) => message.error(error instanceof Error ? error.message : "删除失败")
+  });
+
+  const canDeleteCompany = canDeleteResource(permissions.data, "TARGET_COMPANY");
 
   return (
     <div className="page">
@@ -56,6 +72,23 @@ export function CompaniesPage() {
                   ))}
                 </Space>
               )
+            },
+            {
+              title: "操作",
+              render: (_, record) =>
+                canDeleteCompany ? (
+                  <Popconfirm
+                    title="确认删除该目标公司？"
+                    description="候选人的当前公司关联会被置空，公司记录会删除。"
+                    okText="删除"
+                    cancelText="取消"
+                    onConfirm={() => deleteMutation.mutate(record.id)}
+                  >
+                    <Button danger size="small">
+                      删除
+                    </Button>
+                  </Popconfirm>
+                ) : null
             }
           ]}
         />
@@ -106,7 +139,7 @@ export function CompaniesPage() {
 function split(value?: string) {
   return value
     ? value
-        .split(/[,，]/)
+        .split(/[,，\n]/)
         .map((item) => item.trim())
         .filter(Boolean)
     : [];

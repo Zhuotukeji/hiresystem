@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadGatewayException, Injectable, NotFoundException } from "@nestjs/common";
 import { AiTaskStatus, AiTaskType, ApplicationStage, Prisma } from "@prisma/client";
 import {
   InterviewKitResult,
@@ -13,6 +13,7 @@ import {
 } from "@hiresystem/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateJdSessionDto, OverrideEvaluationDto, ResumeEvaluationDto, SendJdMessageDto } from "./ai.dto";
+import { normalizeJdAssistantPayload } from "./ai.normalizers";
 import { AiProvider } from "./ai.provider";
 import {
   interviewKitPrompt,
@@ -77,7 +78,13 @@ export class AiService {
           })
         }
       ]);
-      const result = jdAssistantResultSchema.parse(response.data);
+      const parsed = jdAssistantResultSchema.safeParse(normalizeJdAssistantPayload(response.data));
+      if (!parsed.success) {
+        throw new BadGatewayException(`AI JD output schema mismatch: ${parsed.error.issues
+          .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+          .join("; ")}`);
+      }
+      const result = parsed.data;
 
       await this.completeTask(task.id, result, response.usage);
       await this.prisma.jdChatMessage.create({

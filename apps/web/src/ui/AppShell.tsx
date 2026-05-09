@@ -1,12 +1,23 @@
 import { Layout, Menu, Button, Typography } from "antd";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Building2, ClipboardList, Gauge, LogOut, Search, UserRoundCheck, UsersRound } from "lucide-react";
+import {
+  Building2,
+  ClipboardList,
+  Gauge,
+  LogOut,
+  Search,
+  Settings,
+  UserRoundCheck,
+  UsersRound
+} from "lucide-react";
 import { clearToken } from "../api/client";
 import { getSelectedMenuKey } from "../domain/navigation";
+import { isAdmin } from "../domain/permissions";
+import { useCurrentUser } from "../hooks/useCurrentUser";
 
 const { Sider, Content, Header } = Layout;
 
-const menuItems = [
+const baseMenuItems = [
   { key: "/", icon: <Gauge size={18} />, label: "招聘驾驶舱" },
   { key: "/candidates", icon: <UsersRound size={18} />, label: "候选人库" },
   { key: "/companies", icon: <Building2 size={18} />, label: "目标公司库" },
@@ -19,6 +30,10 @@ export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const selectedKey = getSelectedMenuKey(location.pathname);
+  const currentUser = useCurrentUser();
+  const menuItems = isAdmin(currentUser.data)
+    ? [...baseMenuItems, { key: "/admin/users", icon: <Settings size={18} />, label: "系统管理" }]
+    : baseMenuItems;
 
   return (
     <Layout style={{ minHeight: "100vh" }}>

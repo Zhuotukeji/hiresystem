@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { AppShell } from "./ui/AppShell";
 import { getToken } from "./api/client";
+import { AdminUsersPage } from "./views/AdminUsersPage";
 import { CandidateDetailPage } from "./views/CandidateDetailPage";
 import { CandidatesPage } from "./views/CandidatesPage";
 import { CompaniesPage } from "./views/CompaniesPage";
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
       { path: "jobs/:id", element: <JobDetailPage /> },
       { path: "sourcing", element: <SourcingPage /> },
       { path: "manager-review", element: <ManagerReviewPage /> },
+      { path: "admin/users", element: <AdminUsersPage /> },
       { path: "interviews/:id", element: <InterviewWorkspacePage /> }
     ]
   }

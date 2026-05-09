@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import { CurrentUser, RequestUser } from "../../common/current-user.decorator";
+import { RequirePermission } from "../../common/permissions.decorator";
 import { CreateCandidateDto, UpdateCandidateDto } from "./candidates.dto";
 import { CandidatesService } from "./candidates.service";
 
@@ -25,5 +26,11 @@ export class CandidatesController {
   @Patch(":id")
   update(@Param("id") id: string, @Body() dto: UpdateCandidateDto) {
     return this.candidatesService.update(id, dto);
+  }
+
+  @RequirePermission("CANDIDATE", "DELETE")
+  @Delete(":id")
+  remove(@Param("id") id: string) {
+    return this.candidatesService.remove(id);
   }
 }

@@ -16,6 +16,16 @@ enum UserRole {
   EXECUTIVE
 }
 
+enum PermissionResource {
+  CANDIDATE
+  TARGET_COMPANY
+  JOB
+}
+
+enum PermissionAction {
+  DELETE
+}
+
 enum CandidateStatus {
   NEW
   TO_CONTACT
@@ -90,6 +100,19 @@ model User {
   managedJobs  Job[]      @relation("HiringManager")
   recruitedJobs Job[]     @relation("Recruiter")
   interviews   Interview[]
+}
+
+model RolePermission {
+  id        String             @id @default(cuid())
+  role      UserRole
+  resource  PermissionResource
+  action    PermissionAction
+  allowed   Boolean            @default(false)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@unique([role, resource, action])
+  @@index([role])
 }
 
 model Candidate {

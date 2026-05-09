@@ -1,9 +1,11 @@
-import { Button, Card, Form, Input, InputNumber, Modal, Space, Table, Tag, message } from "antd";
+import { Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Space, Table, Tag, message } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiList } from "../api/client";
 import { Candidate } from "../api/types";
+import { canDeleteResource } from "../domain/permissions";
+import { useCurrentPermissions } from "../hooks/useCurrentUser";
 import { PageHeader } from "../ui/PageHeader";
 import { ScoreTag } from "../ui/ScoreTag";
 
@@ -11,10 +13,12 @@ export function CandidatesPage() {
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
+  const permissions = useCurrentPermissions();
   const { data, isLoading } = useQuery({
     queryKey: ["candidates"],
     queryFn: () => api.get<ApiList<Candidate>>("/candidates")
   });
+
   const createMutation = useMutation({
     mutationFn: (values: unknown) => api.post("/candidates", values),
     onSuccess: () => {
@@ -25,6 +29,17 @@ export function CandidatesPage() {
     },
     onError: (error) => message.error(error instanceof Error ? error.message : "创建失败")
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/candidates/${id}`),
+    onSuccess: () => {
+      message.success("候选人已删除");
+      queryClient.invalidateQueries({ queryKey: ["candidates"] });
+    },
+    onError: (error) => message.error(error instanceof Error ? error.message : "删除失败")
+  });
+
+  const canDeleteCandidate = canDeleteResource(permissions.data, "CANDIDATE");
 
   return (
     <div className="page">
@@ -65,6 +80,23 @@ export function CandidatesPage() {
                   ))}
                 </Space>
               )
+            },
+            {
+              title: "操作",
+              render: (_, record) =>
+                canDeleteCandidate ? (
+                  <Popconfirm
+                    title="确认删除该候选人？"
+                    description="关联的面试、评估和应聘记录会一起删除。"
+                    okText="删除"
+                    cancelText="取消"
+                    onConfirm={() => deleteMutation.mutate(record.id)}
+                  >
+                    <Button danger size="small">
+                      删除
+                    </Button>
+                  </Popconfirm>
+                ) : null
             }
           ]}
         />
@@ -121,7 +153,7 @@ export function CandidatesPage() {
 function split(value?: string) {
   return value
     ? value
-        .split(/[,，]/)
+        .split(/[,，\n]/)
         .map((item) => item.trim())
         .filter(Boolean)
     : [];

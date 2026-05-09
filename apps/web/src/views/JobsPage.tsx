@@ -1,4 +1,4 @@
-import { Button, Card, Form, Input, InputNumber, Modal, Select, Table, Tabs, Tag, Typography, message } from "antd";
+import { Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Select, Table, Tabs, Tag, Typography, message } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -6,6 +6,9 @@ import { api, ApiList } from "../api/client";
 import { Job } from "../api/types";
 import { AiJdAssistant } from "../components/AiJdAssistant";
 import { buildDraftJobPayload } from "../domain/aiJob";
+import { getJobCreationConfirmCopy, JobCreationMode } from "../domain/jobCreation";
+import { canDeleteResource } from "../domain/permissions";
+import { useCurrentPermissions } from "../hooks/useCurrentUser";
 import { PageHeader } from "../ui/PageHeader";
 
 export function JobsPage() {
@@ -14,18 +17,32 @@ export function JobsPage() {
   const [aiForm] = Form.useForm();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const permissions = useCurrentPermissions();
   const { data, isLoading } = useQuery({
     queryKey: ["jobs"],
     queryFn: () => api.get<ApiList<Job>>("/jobs")
   });
+
   const createMutation = useMutation({
     mutationFn: (values: unknown) => api.post<Job>("/jobs", values),
     onSuccess: () => {
       message.success("岗位已创建");
       closeModal();
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
-    }
+    },
+    onError: (error) => message.error(error instanceof Error ? error.message : "创建失败")
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/jobs/${id}`),
+    onSuccess: () => {
+      message.success("岗位已删除");
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    },
+    onError: (error) => message.error(error instanceof Error ? error.message : "删除失败")
+  });
+
+  const canDeleteJob = canDeleteResource(permissions.data, "JOB");
 
   function closeModal() {
     setOpen(false);
@@ -33,8 +50,19 @@ export function JobsPage() {
     aiForm.resetFields();
   }
 
+  async function handleManualCreate(values: unknown) {
+    const confirmed = await confirmJobCreation("manual", (values as { title?: string }).title);
+    if (confirmed) {
+      createMutation.mutate(values);
+    }
+  }
+
   async function prepareAiDraftJob(prompt: string) {
     const values = await aiForm.validateFields();
+    const confirmed = await confirmJobCreation("ai", values.title);
+    if (!confirmed) {
+      throw new Error("已取消创建岗位");
+    }
     const job = await api.post<Job>("/jobs", buildDraftJobPayload(values, prompt));
     return { jobId: job.id };
   }
@@ -63,7 +91,24 @@ export function JobsPage() {
             { title: "状态", dataIndex: "status" },
             { title: "HC", dataIndex: "headcount" },
             { title: "候选人", render: (_, record) => record._count?.applications ?? 0 },
-            { title: "画像", render: (_, record) => (record.profile ? <Tag color="success">已配置</Tag> : <Tag>待配置</Tag>) }
+            { title: "画像", render: (_, record) => (record.profile ? <Tag color="success">已配置</Tag> : <Tag>待配置</Tag>) },
+            {
+              title: "操作",
+              render: (_, record) =>
+                canDeleteJob ? (
+                  <Popconfirm
+                    title="确认删除该岗位？"
+                    description="岗位下的应聘、面试、评估、JD 版本会一起删除。"
+                    okText="删除"
+                    cancelText="取消"
+                    onConfirm={() => deleteMutation.mutate(record.id)}
+                  >
+                    <Button danger size="small">
+                      删除
+                    </Button>
+                  </Popconfirm>
+                ) : null
+            }
           ]}
         />
       </Card>
@@ -74,7 +119,7 @@ export function JobsPage() {
               key: "manual",
               label: "手动创建",
               children: (
-                <Form layout="vertical" form={manualForm} onFinish={(values) => createMutation.mutate(values)}>
+                <Form layout="vertical" form={manualForm} onFinish={handleManualCreate}>
                   <div className="grid grid-2">
                     <Form.Item label="岗位名称" name="title" rules={[{ required: true }]}>
                       <Input />
@@ -113,7 +158,7 @@ export function JobsPage() {
               children: (
                 <>
                   <Typography.Paragraph type="secondary">
-                    先填写岗位基础信息，再告诉 AI 业务背景、岗位使命和候选人要求。系统会创建岗位草稿，并把 AI 生成的 JD 和岗位画像卡保存到该岗位。
+                    先填写岗位基础信息，再告诉 AI 业务背景、岗位使命和候选人要求。确认后系统会创建岗位草稿，并把 AI 生成的 JD 和岗位画像卡保存到该岗位。
                   </Typography.Paragraph>
                   <Form layout="vertical" form={aiForm} initialValues={{ priority: "P1", headcount: 1 }}>
                     <div className="grid grid-3">
@@ -158,4 +203,17 @@ export function JobsPage() {
       </Modal>
     </div>
   );
+}
+
+function confirmJobCreation(mode: JobCreationMode, title?: string) {
+  const copy = getJobCreationConfirmCopy(mode, title);
+  return new Promise<boolean>((resolve) => {
+    Modal.confirm({
+      ...copy,
+      okText: "确认创建",
+      cancelText: "取消",
+      onOk: () => resolve(true),
+      onCancel: () => resolve(false)
+    });
+  });
 }

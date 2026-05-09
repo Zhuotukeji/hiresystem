@@ -94,6 +94,10 @@ export class CandidatesService {
     });
   }
 
+  remove(id: string) {
+    return this.prisma.candidate.delete({ where: { id } });
+  }
+
   private async findDuplicate(dto: CreateCandidateDto) {
     const checks: Prisma.CandidateWhereInput[] = [];
     if (dto.phone) checks.push({ phone: dto.phone });

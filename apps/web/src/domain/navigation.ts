@@ -1,4 +1,4 @@
-export const navKeys = ["/", "/candidates", "/companies", "/jobs", "/manager-review", "/sourcing"] as const;
+export const navKeys = ["/", "/candidates", "/companies", "/jobs", "/manager-review", "/sourcing", "/admin/users"] as const;
 
 export function getSelectedMenuKey(pathname: string) {
   if (pathname === "/") return "/";

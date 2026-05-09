@@ -8,6 +8,7 @@ import { CompaniesModule } from "./modules/companies/companies.module";
 import { HealthController } from "./modules/health/health.controller";
 import { InterviewsModule } from "./modules/interviews/interviews.module";
 import { JobsModule } from "./modules/jobs/jobs.module";
+import { PermissionsModule } from "./modules/permissions/permissions.module";
 import { PrismaModule } from "./modules/prisma/prisma.module";
 import { UsersModule } from "./modules/users/users.module";
 
@@ -21,6 +22,7 @@ import { UsersModule } from "./modules/users/users.module";
     CompaniesModule,
     JobsModule,
     ApplicationsModule,
+    PermissionsModule,
     AiModule,
     InterviewsModule
   ],

@@ -59,6 +59,10 @@ export class CompaniesService {
     });
   }
 
+  remove(id: string) {
+    return this.prisma.targetCompany.delete({ where: { id } });
+  }
+
   private toData(dto: CreateCompanyDto | UpdateCompanyDto) {
     return {
       ...dto,

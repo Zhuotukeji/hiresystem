@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { RequirePermission } from "../../common/permissions.decorator";
 import { CreateCompanyDto, UpdateCompanyDto } from "./companies.dto";
 import { CompaniesService } from "./companies.service";
 
@@ -24,5 +25,11 @@ export class CompaniesController {
   @Patch(":id")
   update(@Param("id") id: string, @Body() dto: UpdateCompanyDto) {
     return this.companiesService.update(id, dto);
+  }
+
+  @RequirePermission("TARGET_COMPANY", "DELETE")
+  @Delete(":id")
+  remove(@Param("id") id: string) {
+    return this.companiesService.remove(id);
   }
 }

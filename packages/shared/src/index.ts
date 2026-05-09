@@ -9,6 +9,10 @@ export const userRoles = [
   "EXECUTIVE"
 ] as const;
 
+export const permissionResources = ["CANDIDATE", "TARGET_COMPANY", "JOB"] as const;
+
+export const permissionActions = ["DELETE"] as const;
+
 export const candidateStatuses = [
   "NEW",
   "TO_CONTACT",
@@ -73,6 +77,8 @@ export const interviewConclusions = [
 ] as const;
 
 export type UserRole = (typeof userRoles)[number];
+export type PermissionResource = (typeof permissionResources)[number];
+export type PermissionAction = (typeof permissionActions)[number];
 export type CandidateStatus = (typeof candidateStatuses)[number];
 export type ApplicationStage = (typeof applicationStages)[number];
 export type RecommendationLevel = (typeof recommendationLevels)[number];

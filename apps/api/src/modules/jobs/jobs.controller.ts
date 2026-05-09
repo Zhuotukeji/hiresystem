@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from "@nestjs/common";
 import { CurrentUser, RequestUser } from "../../common/current-user.decorator";
+import { RequirePermission } from "../../common/permissions.decorator";
 import { CreateJobDto, JobProfileDto, UpdateJobDto } from "./jobs.dto";
 import { JobsService } from "./jobs.service";
 
@@ -35,5 +36,11 @@ export class JobsController {
   @Put(":id/profile")
   upsertProfile(@Param("id") id: string, @Body() dto: JobProfileDto, @CurrentUser() user: RequestUser) {
     return this.jobsService.upsertProfile(id, dto, user?.sub);
+  }
+
+  @RequirePermission("JOB", "DELETE")
+  @Delete(":id")
+  remove(@Param("id") id: string) {
+    return this.jobsService.remove(id);
   }
 }

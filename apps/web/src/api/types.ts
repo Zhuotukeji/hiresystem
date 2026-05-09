@@ -4,6 +4,27 @@ export type User = {
   name: string;
   email: string;
   role: string;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type PermissionResource = "CANDIDATE" | "TARGET_COMPANY" | "JOB";
+
+export type PermissionAction = "DELETE";
+
+export type RolePermission = {
+  role: string;
+  resource: PermissionResource;
+  action: PermissionAction;
+  allowed: boolean;
+  locked?: boolean;
+};
+
+export type CurrentPermissions = {
+  role: string;
+  permissions: RolePermission[];
+  can: Record<PermissionResource, Record<PermissionAction, boolean>>;
 };
 
 export type Candidate = {

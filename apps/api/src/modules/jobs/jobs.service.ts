@@ -91,6 +91,10 @@ export class JobsService {
     });
   }
 
+  remove(id: string) {
+    return this.prisma.job.delete({ where: { id } });
+  }
+
   async dashboardStats() {
     const [openJobs, candidates, applicationsByStage, bossCandidates, targetCompanies, feedbackPending] =
       await this.prisma.$transaction([
