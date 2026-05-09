@@ -1,28 +1,43 @@
-import { Button, Card, Form, Input, InputNumber, Modal, Select, Table, Tag, message } from "antd";
+import { Button, Card, Form, Input, InputNumber, Modal, Select, Table, Tabs, Tag, Typography, message } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, ApiList } from "../api/client";
 import { Job } from "../api/types";
+import { AiJdAssistant } from "../components/AiJdAssistant";
+import { buildDraftJobPayload } from "../domain/aiJob";
 import { PageHeader } from "../ui/PageHeader";
 
 export function JobsPage() {
   const [open, setOpen] = useState(false);
-  const [form] = Form.useForm();
+  const [manualForm] = Form.useForm();
+  const [aiForm] = Form.useForm();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["jobs"],
     queryFn: () => api.get<ApiList<Job>>("/jobs")
   });
   const createMutation = useMutation({
-    mutationFn: (values: unknown) => api.post("/jobs", values),
+    mutationFn: (values: unknown) => api.post<Job>("/jobs", values),
     onSuccess: () => {
       message.success("岗位已创建");
-      setOpen(false);
-      form.resetFields();
+      closeModal();
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
     }
   });
+
+  function closeModal() {
+    setOpen(false);
+    manualForm.resetFields();
+    aiForm.resetFields();
+  }
+
+  async function prepareAiDraftJob(prompt: string) {
+    const values = await aiForm.validateFields();
+    const job = await api.post<Job>("/jobs", buildDraftJobPayload(values, prompt));
+    return { jobId: job.id };
+  }
 
   return (
     <div className="page">
@@ -52,33 +67,94 @@ export function JobsPage() {
           ]}
         />
       </Card>
-      <Modal title="新增岗位" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()}>
-        <Form layout="vertical" form={form} onFinish={(values) => createMutation.mutate(values)}>
-          <Form.Item label="岗位名称" name="title" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item label="部门" name="department">
-            <Input />
-          </Form.Item>
-          <Form.Item label="城市" name="city">
-            <Input />
-          </Form.Item>
-          <Form.Item label="优先级" name="priority" initialValue="P1">
-            <Select options={["P0", "P1", "P2"].map((value) => ({ value, label: value }))} />
-          </Form.Item>
-          <Form.Item label="HC" name="headcount" initialValue={1}>
-            <InputNumber min={1} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item label="薪资下限" name="salaryMin">
-            <InputNumber min={0} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item label="薪资上限" name="salaryMax">
-            <InputNumber min={0} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item label="JD" name="jd">
-            <Input.TextArea rows={5} />
-          </Form.Item>
-        </Form>
+      <Modal title="新增岗位" open={open} onCancel={closeModal} footer={null} width={960}>
+        <Tabs
+          items={[
+            {
+              key: "manual",
+              label: "手动创建",
+              children: (
+                <Form layout="vertical" form={manualForm} onFinish={(values) => createMutation.mutate(values)}>
+                  <div className="grid grid-2">
+                    <Form.Item label="岗位名称" name="title" rules={[{ required: true }]}>
+                      <Input />
+                    </Form.Item>
+                    <Form.Item label="部门" name="department">
+                      <Input />
+                    </Form.Item>
+                    <Form.Item label="城市" name="city">
+                      <Input />
+                    </Form.Item>
+                    <Form.Item label="优先级" name="priority" initialValue="P1">
+                      <Select options={["P0", "P1", "P2"].map((value) => ({ value, label: value }))} />
+                    </Form.Item>
+                    <Form.Item label="HC" name="headcount" initialValue={1}>
+                      <InputNumber min={1} style={{ width: "100%" }} />
+                    </Form.Item>
+                    <Form.Item label="薪资下限" name="salaryMin">
+                      <InputNumber min={0} style={{ width: "100%" }} />
+                    </Form.Item>
+                    <Form.Item label="薪资上限" name="salaryMax">
+                      <InputNumber min={0} style={{ width: "100%" }} />
+                    </Form.Item>
+                  </div>
+                  <Form.Item label="JD" name="jd">
+                    <Input.TextArea rows={5} />
+                  </Form.Item>
+                  <Button type="primary" htmlType="submit" loading={createMutation.isPending}>
+                    创建岗位
+                  </Button>
+                </Form>
+              )
+            },
+            {
+              key: "ai",
+              label: "AI 生成 JD",
+              children: (
+                <>
+                  <Typography.Paragraph type="secondary">
+                    先填写岗位基础信息，再告诉 AI 业务背景、岗位使命和候选人要求。系统会创建岗位草稿，并把 AI 生成的 JD 和岗位画像卡保存到该岗位。
+                  </Typography.Paragraph>
+                  <Form layout="vertical" form={aiForm} initialValues={{ priority: "P1", headcount: 1 }}>
+                    <div className="grid grid-3">
+                      <Form.Item label="岗位名称" name="title" rules={[{ required: true }]}>
+                        <Input placeholder="高级后端工程师" />
+                      </Form.Item>
+                      <Form.Item label="部门" name="department">
+                        <Input placeholder="技术部" />
+                      </Form.Item>
+                      <Form.Item label="城市" name="city">
+                        <Input placeholder="上海" />
+                      </Form.Item>
+                      <Form.Item label="优先级" name="priority">
+                        <Select options={["P0", "P1", "P2"].map((value) => ({ value, label: value }))} />
+                      </Form.Item>
+                      <Form.Item label="HC" name="headcount">
+                        <InputNumber min={1} style={{ width: "100%" }} />
+                      </Form.Item>
+                      <Form.Item label="薪资下限" name="salaryMin">
+                        <InputNumber min={0} style={{ width: "100%" }} />
+                      </Form.Item>
+                      <Form.Item label="薪资上限" name="salaryMax">
+                        <InputNumber min={0} style={{ width: "100%" }} />
+                      </Form.Item>
+                    </div>
+                  </Form>
+                  <AiJdAssistant
+                    cardTitle="告诉 AI 这个岗位要解决什么问题"
+                    buttonText="AI 生成 JD 并创建岗位"
+                    prepareJob={prepareAiDraftJob}
+                    onSaved={({ jobId }) => {
+                      closeModal();
+                      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+                      navigate(`/jobs/${jobId}`);
+                    }}
+                  />
+                </>
+              )
+            }
+          ]}
+        />
       </Modal>
     </div>
   );

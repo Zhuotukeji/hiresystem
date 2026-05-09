@@ -10,6 +10,7 @@ import { JobDetailPage } from "./views/JobDetailPage";
 import { JobsPage } from "./views/JobsPage";
 import { LoginPage } from "./views/LoginPage";
 import { ManagerReviewPage } from "./views/ManagerReviewPage";
+import { SourcingPage } from "./views/SourcingPage";
 
 function Protected() {
   if (!getToken()) {
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
       { path: "companies", element: <CompaniesPage /> },
       { path: "jobs", element: <JobsPage /> },
       { path: "jobs/:id", element: <JobDetailPage /> },
+      { path: "sourcing", element: <SourcingPage /> },
       { path: "manager-review", element: <ManagerReviewPage /> },
       { path: "interviews/:id", element: <InterviewWorkspacePage /> }
     ]

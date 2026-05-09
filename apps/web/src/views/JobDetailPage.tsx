@@ -14,9 +14,9 @@ import {
 } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { useState } from "react";
 import { api } from "../api/client";
 import { Application, Job } from "../api/types";
+import { AiJdAssistant } from "../components/AiJdAssistant";
 import { pipelineStages, stageToKitStage } from "../domain/stages";
 import { PageHeader } from "../ui/PageHeader";
 import { ScoreTag } from "../ui/ScoreTag";
@@ -61,7 +61,13 @@ export function JobDetailPage() {
           {
             key: "ai-jd",
             label: "AI JD助手",
-            children: job ? <AiJdAssistant job={job} onSaved={() => queryClient.invalidateQueries({ queryKey: ["job", id] })} /> : null
+            children: job ? (
+              <AiJdAssistant
+                jobId={job.id}
+                initialJd={job.jd}
+                onSaved={() => queryClient.invalidateQueries({ queryKey: ["job", id] })}
+              />
+            ) : null
           },
           {
             key: "pipeline",
@@ -174,54 +180,6 @@ function JobProfileForm({ job, onSaved }: { job: Job; onSaved: () => void }) {
         </Button>
       </Form>
     </Card>
-  );
-}
-
-function AiJdAssistant({ job, onSaved }: { job: Job; onSaved: () => void }) {
-  const [sessionId, setSessionId] = useState<string>();
-  const [content, setContent] = useState("");
-  const [resultText, setResultText] = useState(job.jd ?? "");
-  const createSession = useMutation({
-    mutationFn: () => api.post<{ id: string }>("/ai/jd-chat/sessions", { jobId: job.id })
-  });
-  const sendMessage = useMutation({
-    mutationFn: async () => {
-      const session = sessionId ?? (await createSession.mutateAsync()).id;
-      setSessionId(session);
-      return api.post<{ result: { external_jd: { title: string; job_description: string[]; requirements: string[]; nice_to_have: string[]; company_pitch: string } } }>(
-        `/ai/jd-chat/${session}/messages`,
-        { content, saveToJobId: job.id }
-      );
-    },
-    onSuccess: (response) => {
-      const jd = response.result.external_jd;
-      setResultText(
-        [`# ${jd.title}`, "## 岗位职责", ...jd.job_description.map((item) => `- ${item}`), "## 任职要求", ...jd.requirements.map((item) => `- ${item}`), "## 加分项", ...jd.nice_to_have.map((item) => `- ${item}`), jd.company_pitch].join("\n")
-      );
-      setContent("");
-      message.success("AI JD 已生成并保存到岗位");
-      onSaved();
-    },
-    onError: (error) => message.error(error instanceof Error ? error.message : "AI JD 生成失败")
-  });
-
-  return (
-    <div className="grid grid-2">
-      <Card title="和 AI 说明岗位需求">
-        <Input.TextArea
-          rows={10}
-          value={content}
-          onChange={(event) => setContent(event.target.value)}
-          placeholder="例如：我们要招高级后端，负责订单和履约系统重构，上海，30-45k，必须有Java、Redis、消息队列和复杂业务系统经验..."
-        />
-        <Button type="primary" style={{ marginTop: 12 }} loading={sendMessage.isPending} onClick={() => sendMessage.mutate()}>
-          生成并保存 JD
-        </Button>
-      </Card>
-      <Card title="当前 JD 预览">
-        <Typography.Paragraph style={{ whiteSpace: "pre-wrap" }}>{resultText || "暂无内容"}</Typography.Paragraph>
-      </Card>
-    </div>
   );
 }
 

@@ -16,6 +16,7 @@ export type Candidate = {
   city?: string;
   yearsOfExperience?: number;
   expectedSalary?: string;
+  sourceChannel?: string;
   resumeText?: string;
   aiSummary?: string;
   tags: string[];
