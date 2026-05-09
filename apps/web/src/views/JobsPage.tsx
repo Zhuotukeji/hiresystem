@@ -5,7 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, ApiList } from "../api/client";
 import { Job } from "../api/types";
 import { AiJdAssistant } from "../components/AiJdAssistant";
-import { buildDraftJobPayload } from "../domain/aiJob";
+import { buildDraftJobPayload, validateAiJdInput } from "../domain/aiJob";
 import { getJobCreationConfirmCopy, JobCreationMode } from "../domain/jobCreation";
 import { canDeleteResource } from "../domain/permissions";
 import { useCurrentPermissions } from "../hooks/useCurrentUser";
@@ -59,6 +59,11 @@ export function JobsPage() {
 
   async function prepareAiDraftJob(prompt: string) {
     const values = await aiForm.validateFields();
+    const validation = validateAiJdInput(values, prompt);
+    if (!validation.ok) {
+      message.error(validation.message);
+      throw new Error(validation.message);
+    }
     const confirmed = await confirmJobCreation("ai", values.title);
     if (!confirmed) {
       throw new Error("已取消创建岗位");
@@ -71,7 +76,7 @@ export function JobsPage() {
     <div className="page">
       <PageHeader
         title="岗位工作台"
-        desc="岗位画像、候选人 pipeline、AI JD 和面试流转。"
+        desc="岗位画像、候选人流程、AI JD 和面试流转。"
         actions={
           <Button type="primary" onClick={() => setOpen(true)}>
             新增岗位
@@ -158,12 +163,12 @@ export function JobsPage() {
               children: (
                 <>
                   <Typography.Paragraph type="secondary">
-                    先填写岗位基础信息，再告诉 AI 业务背景、岗位使命和候选人要求。确认后系统会创建岗位草稿，并把 AI 生成的 JD 和岗位画像卡保存到该岗位。
+                    先填写岗位基础信息，再告诉 AI 业务背景、岗位使命和候选人要求。岗位名称会作为生成约束；确认后系统会创建岗位草稿，并把 AI 生成的 JD 和岗位画像卡保存到该岗位。
                   </Typography.Paragraph>
                   <Form layout="vertical" form={aiForm} initialValues={{ priority: "P1", headcount: 1 }}>
                     <div className="grid grid-3">
                       <Form.Item label="岗位名称" name="title" rules={[{ required: true }]}>
-                        <Input placeholder="高级后端工程师" />
+                        <Input placeholder="例如：HRBP / 增长运营 / Java 后端" />
                       </Form.Item>
                       <Form.Item label="部门" name="department">
                         <Input placeholder="技术部" />

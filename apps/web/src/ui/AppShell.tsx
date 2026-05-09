@@ -23,7 +23,7 @@ const baseMenuItems = [
   { key: "/companies", icon: <Building2 size={18} />, label: "目标公司库" },
   { key: "/jobs", icon: <ClipboardList size={18} />, label: "岗位工作台" },
   { key: "/manager-review", icon: <UserRoundCheck size={18} />, label: "用人经理快审" },
-  { key: "/sourcing", icon: <Search size={18} />, label: "Sourcing" }
+  { key: "/sourcing", icon: <Search size={18} />, label: "主动寻访" }
 ];
 
 export function AppShell() {
@@ -39,7 +39,7 @@ export function AppShell() {
     <Layout style={{ minHeight: "100vh" }}>
       <Sider width={224}>
         <div style={{ height: 64, display: "flex", alignItems: "center", padding: "0 20px" }}>
-          <Typography.Text style={{ color: "#fff", fontSize: 18, fontWeight: 700 }}>Hiresystem</Typography.Text>
+          <Typography.Text style={{ color: "#fff", fontSize: 18, fontWeight: 700 }}>招聘系统</Typography.Text>
         </div>
         <Menu
           theme="dark"

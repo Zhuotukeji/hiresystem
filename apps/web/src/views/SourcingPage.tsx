@@ -60,7 +60,7 @@ export function SourcingPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Sourcing 工作台" desc="围绕目标公司和岗位画像主动找人，降低对 BOSS 简历的依赖。" />
+      <PageHeader title="主动寻访工作台" desc="围绕目标公司和岗位画像主动找人，降低对 BOSS 简历的依赖。" />
       <Row gutter={[16, 16]}>
         <Col xs={24} md={8} lg={4}>
           <Card>
@@ -95,7 +95,7 @@ export function SourcingPage() {
       </Row>
 
       <Card
-        title="按岗位生成 sourcing 视图"
+        title="按岗位生成寻访视图"
         style={{ marginTop: 16 }}
         extra={
           <Select

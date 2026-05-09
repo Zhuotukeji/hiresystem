@@ -25,5 +25,5 @@ COPY --from=build /app/packages/shared ./packages/shared
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 WORKDIR /app/apps/api
-EXPOSE 3000
+EXPOSE 3001
 CMD ["sh", "-c", "pnpm prisma:deploy && node dist/apps/api/src/main.js"]

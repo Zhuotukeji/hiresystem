@@ -82,7 +82,7 @@ export function AiJdAssistant({
           rows={10}
           value={content}
           onChange={(event) => setContent(event.target.value)}
-          placeholder="例如：我们要招高级后端，负责订单和履约系统重构，上海，30-45k，必须有 Java、Redis、消息队列和复杂业务系统经验..."
+          placeholder="例如：我们要招 HRBP，负责支持业务团队组织发展、人才盘点、绩效落地和管理者辅导，上海，薪资面议..."
         />
         <Button
           type="primary"

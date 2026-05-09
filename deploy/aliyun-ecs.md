@@ -30,8 +30,8 @@ cp .env.example .env
 
 ```bash
 NODE_ENV=production
-PORT=3000
-DATABASE_URL=postgresql://<user>:<password>@<rds-host>:5432/<db>?schema=public
+PORT=3001
+DATABASE_URL=postgresql://<user>:<password>@<rds-host>:5433/<db>?schema=public
 JWT_SECRET=<strong-random-secret>
 SUB2API_BASE_URL=https://ai.midongtech.com/v1
 SUB2API_API_KEY=<server-secret>

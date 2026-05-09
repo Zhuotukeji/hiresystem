@@ -32,7 +32,7 @@ export function LoginPage() {
     >
       <Card style={{ width: 380 }}>
         <Typography.Title level={3} style={{ marginTop: 0 }}>
-          Hiresystem
+          招聘系统
         </Typography.Title>
         <Typography.Paragraph className="muted">登录招聘效率系统</Typography.Paragraph>
         <Form layout="vertical" onFinish={submit} initialValues={{ email: "admin@hiresystem.local" }}>

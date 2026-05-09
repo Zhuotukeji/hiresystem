@@ -71,7 +71,7 @@ export function JobDetailPage() {
           },
           {
             key: "pipeline",
-            label: "Pipeline",
+            label: "流程看板",
             children: <Pipeline applications={job?.applications ?? []} jobId={id!} />
           }
         ]}

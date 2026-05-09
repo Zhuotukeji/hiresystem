@@ -48,6 +48,14 @@ internal_job_profile 要能直接用于简历筛选和面试问题生成。
 不要写空泛词，如“抗压能力强”“有激情”，除非能转化为具体行为要求。
 `;
 
+export const jdRoleConsistencyPrompt = `
+岗位一致性是硬约束：
+1. latest_user_message 和 job_context 是唯一事实来源，不得擅自换岗。
+2. 如果用户写的是 HRBP、人力资源业务伙伴、人力资源 BP，输出必须围绕 HRBP，不得生成产品经理、运营、技术、销售等其他岗位。
+3. external_jd.title、job_title、岗位职责、任职要求、内部画像必须指向同一个岗位。
+4. 如果信息不足，只能基于已有事实写保守版本，不能用常见模板替换岗位。
+`;
+
 export const interviewKitPrompt = `
 你是面试设计助手。
 请基于候选人简历、岗位画像、AI简历判定和历史面试反馈，生成当前阶段的面试套件。

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDraftJobPayload, canStartAiJobGeneration, formatJdPreview } from "./aiJob";
+import { buildDraftJobPayload, canStartAiJobGeneration, formatJdPreview, validateAiJdInput } from "./aiJob";
 
 describe("AI job helpers", () => {
   it("requires a non-empty prompt before starting AI JD generation", () => {
@@ -15,6 +15,15 @@ describe("AI job helpers", () => {
       priority: "P0",
       headcount: 1,
       jd: "负责订单系统"
+    });
+  });
+
+  it("detects conflicting job title and AI JD prompt", () => {
+    expect(validateAiJdInput({ title: "HRBP" }, "负责产品规划和需求分析")).toMatchObject({
+      ok: false
+    });
+    expect(validateAiJdInput({ title: "HRBP" }, "支持业务团队组织发展和人才盘点")).toMatchObject({
+      ok: true
     });
   });
 

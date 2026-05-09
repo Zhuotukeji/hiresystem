@@ -13,11 +13,13 @@ import {
 } from "@hiresystem/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateJdSessionDto, OverrideEvaluationDto, ResumeEvaluationDto, SendJdMessageDto } from "./ai.dto";
+import { buildJdRoleCorrectionPrompt, validateJdRoleConsistency } from "./jd-role-consistency";
 import { normalizeJdAssistantPayload } from "./ai.normalizers";
 import { AiProvider } from "./ai.provider";
 import {
   interviewKitPrompt,
   jdAssistantPrompt,
+  jdRoleConsistencyPrompt,
   jsonOnlySystemPrompt,
   resumeEvaluationPrompt,
   stageHandoffPrompt
@@ -58,23 +60,49 @@ export class AiService {
       data: { sessionId, role: "user", content: dto.content }
     });
 
+    const jobId = dto.saveToJobId ?? session.jobId;
+    const jobContext = jobId
+      ? await this.prisma.job.findUnique({
+          where: { id: jobId },
+          include: { profile: true }
+        })
+      : null;
+    if (jobId && !jobContext) {
+      throw new NotFoundException("Job not found");
+    }
+
     const inputSnapshot = {
       sessionId,
       userMessage: dto.content,
-      history: session.messages.map((message) => ({ role: message.role, content: message.content }))
+      history: session.messages.map((message) => ({ role: message.role, content: message.content })),
+      job_context: jobContext
+        ? {
+            id: jobContext.id,
+            title: jobContext.title,
+            department: jobContext.department,
+            city: jobContext.city,
+            salaryMin: jobContext.salaryMin,
+            salaryMax: jobContext.salaryMax,
+            jd: jobContext.jd,
+            profile: jobContext.profile
+          }
+        : null
     };
     const task = await this.createTask(AiTaskType.JD_CHAT, inputSnapshot, userId);
 
     try {
-      const response = await this.aiProvider.completeJson([
-        { role: "system", content: `${jsonOnlySystemPrompt}\n${jdAssistantPrompt}` },
+      let response = await this.aiProvider.completeJson([
+        { role: "system", content: `${jsonOnlySystemPrompt}\n${jdAssistantPrompt}\n${jdRoleConsistencyPrompt}` },
         {
           role: "user",
           content: JSON.stringify({
             instruction:
               "继续对话。如果信息足够，请输出完整JD JSON；如果信息不足，也输出当前可生成的JSON，并在company_pitch或mission中保持务实，不要编造业务事实。",
             history: inputSnapshot.history,
-            latest_user_message: dto.content
+            latest_user_message: dto.content,
+            job_context: inputSnapshot.job_context,
+            role_consistency_rule:
+              "必须以 latest_user_message 和 job_context 为唯一事实来源。岗位名称、职责、要求必须匹配用户指定岗位；如果用户要求 HRBP/人力资源业务伙伴，不得生成产品经理或其他岗位。"
           })
         }
       ]);
@@ -84,7 +112,53 @@ export class AiService {
           .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
           .join("; ")}`);
       }
-      const result = parsed.data;
+      let result = parsed.data;
+      let consistency = validateJdRoleConsistency({
+        requestedTexts: [
+          dto.content,
+          inputSnapshot.job_context?.title,
+          inputSnapshot.job_context?.department,
+          inputSnapshot.job_context?.jd,
+          inputSnapshot.job_context?.profile?.mission,
+          ...(inputSnapshot.job_context?.profile?.mustHaveSkills ?? [])
+        ],
+        result
+      });
+      if (!consistency.ok) {
+        response = await this.aiProvider.completeJson([
+          { role: "system", content: `${jsonOnlySystemPrompt}\n${jdAssistantPrompt}\n${jdRoleConsistencyPrompt}` },
+          {
+            role: "user",
+            content: JSON.stringify({
+              instruction: buildJdRoleCorrectionPrompt(consistency),
+              history: inputSnapshot.history,
+              latest_user_message: dto.content,
+              job_context: inputSnapshot.job_context
+            })
+          }
+        ]);
+        const retryParsed = jdAssistantResultSchema.safeParse(normalizeJdAssistantPayload(response.data));
+        if (!retryParsed.success) {
+          throw new BadGatewayException(`AI JD output schema mismatch: ${retryParsed.error.issues
+            .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+            .join("; ")}`);
+        }
+        result = retryParsed.data;
+        consistency = validateJdRoleConsistency({
+          requestedTexts: [
+            dto.content,
+            inputSnapshot.job_context?.title,
+            inputSnapshot.job_context?.department,
+            inputSnapshot.job_context?.jd,
+            inputSnapshot.job_context?.profile?.mission,
+            ...(inputSnapshot.job_context?.profile?.mustHaveSkills ?? [])
+          ],
+          result
+        });
+        if (!consistency.ok) {
+          throw new BadGatewayException(consistency.message ?? "AI JD role does not match requested job");
+        }
+      }
 
       await this.completeTask(task.id, result, response.usage);
       await this.prisma.jdChatMessage.create({
@@ -96,7 +170,6 @@ export class AiService {
         }
       });
 
-      const jobId = dto.saveToJobId ?? session.jobId;
       let jdVersion = null;
       if (jobId) {
         jdVersion = await this.saveJdVersion(jobId, result, task.id, userId, inputSnapshot);
