@@ -4,17 +4,19 @@ import {
   InterviewKitResult,
   JdAssistantResult,
   ResumeEvaluationResult,
+  ResumeParseResult,
   StageHandoffResult,
   interviewKitResultSchema,
   jdAssistantResultSchema,
   resumeEvaluationResultSchema,
+  resumeParseResultSchema,
   stageHandoffResultSchema,
   toExternalJdText
 } from "@hiresystem/shared";
 import { PrismaService } from "../prisma/prisma.service";
-import { CreateJdSessionDto, OverrideEvaluationDto, ResumeEvaluationDto, SendJdMessageDto } from "./ai.dto";
+import { CreateJdSessionDto, OverrideEvaluationDto, ResumeEvaluationDto, ResumeParseDto, SendJdMessageDto } from "./ai.dto";
 import { buildJdRoleCorrectionPrompt, validateJdRoleConsistency } from "./jd-role-consistency";
-import { normalizeJdAssistantPayload } from "./ai.normalizers";
+import { normalizeJdAssistantPayload, normalizeResumeParsePayload } from "./ai.normalizers";
 import { AiProvider } from "./ai.provider";
 import {
   interviewKitPrompt,
@@ -22,8 +24,10 @@ import {
   jdRoleConsistencyPrompt,
   jsonOnlySystemPrompt,
   resumeEvaluationPrompt,
+  resumeParsePrompt,
   stageHandoffPrompt
 } from "./ai.prompts";
+import { ResumeUploadFile, extractResumeText } from "./resume-extractor";
 
 @Injectable()
 export class AiService {
@@ -47,6 +51,34 @@ export class AiService {
       },
       include: { messages: true }
     });
+  }
+
+  async parseResume(dto: ResumeParseDto, file?: ResumeUploadFile, userId?: string) {
+    const resumeText = await extractResumeText(file, dto.resumeText);
+    const inputSnapshot = {
+      file: file
+        ? {
+            originalName: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size
+          }
+        : null,
+      resumeText
+    };
+    const task = await this.createTask(AiTaskType.RESUME_PARSE, inputSnapshot, userId);
+
+    try {
+      const response = await this.aiProvider.completeJson([
+        { role: "system", content: `${jsonOnlySystemPrompt}\n${resumeParsePrompt}` },
+        { role: "user", content: JSON.stringify({ resume_text: resumeText }) }
+      ]);
+      const result = this.parseResumeResult(response.data, resumeText);
+      await this.completeTask(task.id, result, response.usage);
+      return { status: "completed", result };
+    } catch (error) {
+      await this.failTask(task.id, error);
+      throw error;
+    }
   }
 
   async continueJdChat(sessionId: string, dto: SendJdMessageDto, userId?: string) {
@@ -482,6 +514,21 @@ export class AiService {
       missingInformation: result.missing_information,
       suggestedNextStep: result.suggested_next_step,
       createdBy: userId
+    };
+  }
+
+  private parseResumeResult(raw: unknown, resumeText: string): ResumeParseResult {
+    const parsed = resumeParseResultSchema.safeParse(normalizeResumeParsePayload(raw, resumeText));
+    if (!parsed.success) {
+      throw new BadGatewayException(`AI resume parse output schema mismatch: ${parsed.error.issues
+        .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+        .join("; ")}`);
+    }
+
+    return {
+      ...parsed.data,
+      resumeText: parsed.data.resumeText || resumeText,
+      tags: parsed.data.tags.map((tag) => tag.trim()).filter(Boolean).slice(0, 8)
     };
   }
 

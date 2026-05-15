@@ -1,13 +1,16 @@
-import { Body, Controller, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Param, Patch, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentUser, RequestUser } from "../../common/current-user.decorator";
 import {
   CreateJdSessionDto,
   GenerateInterviewKitDto,
+  ResumeParseDto,
   ResumeEvaluationDto,
   SendJdMessageDto,
   OverrideEvaluationDto
 } from "./ai.dto";
 import { AiService } from "./ai.service";
+import { ResumeUploadFile } from "./resume-extractor";
 
 @Controller("ai")
 export class AiController {
@@ -30,6 +33,16 @@ export class AiController {
   @Post("resume-evaluations")
   generateResumeEvaluation(@Body() dto: ResumeEvaluationDto, @CurrentUser() user: RequestUser) {
     return this.aiService.generateResumeEvaluation(dto, user?.sub);
+  }
+
+  @Post("resume-parse")
+  @UseInterceptors(FileInterceptor("resume", { limits: { fileSize: 10 * 1024 * 1024 } }))
+  parseResume(
+    @UploadedFile() file: ResumeUploadFile | undefined,
+    @Body() dto: ResumeParseDto,
+    @CurrentUser() user: RequestUser
+  ) {
+    return this.aiService.parseResume(dto, file, user?.sub);
   }
 
   @Patch("resume-evaluations/:id/override")

@@ -119,6 +119,38 @@ export const resumeEvaluationResultSchema = z.object({
   suggested_next_step: z.string().default("")
 });
 
+const optionalTextSchema = z.preprocess((value) => (value === null || value === undefined ? "" : value), z.string()).default("");
+
+export const resumeParseResultSchema = z.object({
+  name: optionalTextSchema,
+  phone: optionalTextSchema,
+  email: optionalTextSchema,
+  wechat: optionalTextSchema,
+  currentCompanyName: optionalTextSchema,
+  currentTitle: optionalTextSchema,
+  currentLevel: optionalTextSchema,
+  city: optionalTextSchema,
+  yearsOfExperience: z
+    .preprocess((value) => {
+      if (value === "" || value === null || value === undefined) return null;
+      if (typeof value === "string") {
+        const parsed = Number.parseInt(value, 10);
+        return Number.isNaN(parsed) ? null : parsed;
+      }
+      return value;
+    }, z.number().int().min(0).max(60).nullable())
+    .default(null),
+  educationSummary: optionalTextSchema,
+  expectedSalary: optionalTextSchema,
+  currentSalary: optionalTextSchema,
+  availability: optionalTextSchema,
+  jobIntention: optionalTextSchema,
+  sourceChannel: optionalTextSchema,
+  tags: z.array(z.string()).default([]),
+  aiSummary: optionalTextSchema,
+  resumeText: optionalTextSchema
+});
+
 export const jdAssistantResultSchema = z.object({
   job_title: z.string().min(1),
   external_jd: z.object({
@@ -176,6 +208,7 @@ export const stageHandoffResultSchema = z.object({
 });
 
 export type ResumeEvaluationResult = z.infer<typeof resumeEvaluationResultSchema>;
+export type ResumeParseResult = z.infer<typeof resumeParseResultSchema>;
 export type JdAssistantResult = z.infer<typeof jdAssistantResultSchema>;
 export type InterviewKitResult = z.infer<typeof interviewKitResultSchema>;
 export type StageHandoffResult = z.infer<typeof stageHandoffResultSchema>;

@@ -49,6 +49,33 @@ export function normalizeJdAssistantPayload(raw: unknown) {
   };
 }
 
+export function normalizeResumeParsePayload(raw: unknown, resumeText: string) {
+  const payload = asObject(raw);
+  const candidate = asObject(payload.candidate ?? payload.profile ?? payload.basic_info);
+  const source = Object.keys(candidate).length ? candidate : payload;
+
+  return {
+    name: firstText(source.name, source.candidate_name, source.full_name),
+    phone: firstText(source.phone, source.mobile, source.phone_number, source.tel),
+    email: firstText(source.email, source.mail),
+    wechat: firstText(source.wechat, source.wechat_id, source.weixin),
+    currentCompanyName: firstText(source.currentCompanyName, source.current_company, source.company),
+    currentTitle: firstText(source.currentTitle, source.current_title, source.title, source.position),
+    currentLevel: firstText(source.currentLevel, source.current_level, source.level),
+    city: firstText(source.city, source.location, source.current_city),
+    yearsOfExperience: source.yearsOfExperience ?? source.years_of_experience ?? source.work_years ?? null,
+    educationSummary: firstText(source.educationSummary, source.education_summary, source.education),
+    expectedSalary: firstText(source.expectedSalary, source.expected_salary),
+    currentSalary: firstText(source.currentSalary, source.current_salary),
+    availability: firstText(source.availability, source.available_time),
+    jobIntention: firstText(source.jobIntention, source.job_intention, source.career_goal),
+    sourceChannel: firstText(source.sourceChannel, source.source_channel),
+    tags: toStringArray(source.tags ?? source.keywords ?? source.skills).slice(0, 8),
+    aiSummary: firstText(source.aiSummary, source.ai_summary, source.summary),
+    resumeText: firstText(source.resumeText, source.resume_text, payload.resumeText, payload.resume_text) || resumeText
+  };
+}
+
 function asObject(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : {};
 }

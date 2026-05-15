@@ -3,6 +3,7 @@ import {
   interviewKitResultSchema,
   jdAssistantResultSchema,
   resumeEvaluationResultSchema,
+  resumeParseResultSchema,
   stageHandoffResultSchema
 } from "@hiresystem/shared";
 
@@ -29,6 +30,24 @@ describe("AI result schemas", () => {
       suggested_next_step: "建议HR初筛"
     });
     expect(result.match_score).toBe(78);
+  });
+
+  it("validates resume parse result", () => {
+    const result = resumeParseResultSchema.parse({
+      name: "张三",
+      phone: "13800000000",
+      email: "zhangsan@example.com",
+      currentCompanyName: "某互联网公司",
+      currentTitle: "HRBP",
+      city: "上海",
+      yearsOfExperience: "6年",
+      educationSummary: "本科，人力资源管理",
+      tags: ["HRBP", "组织发展"],
+      aiSummary: "候选人有 HRBP 和组织发展经验。",
+      resumeText: "张三，6年HRBP经验"
+    });
+    expect(result.yearsOfExperience).toBe(6);
+    expect(result.tags).toContain("HRBP");
   });
 
   it("validates JD assistant result", () => {

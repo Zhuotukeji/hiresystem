@@ -129,6 +129,42 @@ export type CandidateEvaluation = {
   createdAt: string;
 };
 
+export type ResumeParseResult = {
+  name: string;
+  phone?: string;
+  email?: string;
+  wechat?: string;
+  currentCompanyName?: string;
+  currentTitle?: string;
+  currentLevel?: string;
+  city?: string;
+  yearsOfExperience?: number | null;
+  educationSummary?: string;
+  expectedSalary?: string;
+  currentSalary?: string;
+  availability?: string;
+  jobIntention?: string;
+  sourceChannel?: string;
+  tags: string[];
+  aiSummary?: string;
+  resumeText: string;
+};
+
+export type ResumeEvaluationResponse = {
+  evaluation_id: string;
+  status: string;
+  result: {
+    match_score: number;
+    level: string;
+    recommendation: string;
+    summary: string;
+    reasons: string[];
+    risks: string[];
+    questions_to_confirm: string[];
+    suggested_next_step?: string;
+  };
+};
+
 export type InterviewKit = {
   id: string;
   stage: string;

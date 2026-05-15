@@ -15,6 +15,33 @@ recommendation 必须是 advance_to_hr_screen/send_to_hiring_manager_review/reje
 所有结论必须有证据或明确说明信息不足。
 `;
 
+export const resumeParsePrompt = `
+你是招聘系统里的简历解析助手。请只基于输入的简历原文提取候选人信息，不要补写简历没有出现的事实。
+输出必须严格使用下面的 JSON 字段名：
+{
+  "name": "候选人姓名",
+  "phone": "手机号",
+  "email": "邮箱",
+  "wechat": "微信",
+  "currentCompanyName": "当前或最近一家公司",
+  "currentTitle": "当前或最近职位",
+  "currentLevel": "职级/级别",
+  "city": "当前城市或期望城市",
+  "yearsOfExperience": 0,
+  "educationSummary": "学历摘要",
+  "expectedSalary": "期望薪资",
+  "currentSalary": "当前薪资",
+  "availability": "到岗时间",
+  "jobIntention": "求职意向",
+  "sourceChannel": "简历来源，无法判断则为空",
+  "tags": ["可用于搜索和筛选的标签"],
+  "aiSummary": "用 3-5 句话总结候选人背景、核心经验和明显风险",
+  "resumeText": "清洗后的完整简历文本"
+}
+无法识别的字符串字段返回空字符串；yearsOfExperience 无法判断返回 null；tags 不要超过 8 个。
+不要因为年龄、性别、婚育、民族、宗教、健康隐私等不合规因素做评价或打标签。
+`;
+
 export const jdAssistantPrompt = `
 你是互联网创业公司的招聘JD助手。
 你的任务是通过对话帮用户生成务实、清晰、有吸引力但不过度包装的JD。

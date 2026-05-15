@@ -32,6 +32,12 @@ export class ResumeEvaluationDto {
   mode?: string;
 }
 
+export class ResumeParseDto {
+  @IsOptional()
+  @IsString()
+  resumeText?: string;
+}
+
 export class OverrideEvaluationDto {
   @IsIn(recommendationActions)
   manualDecision!: string;

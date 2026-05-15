@@ -19,7 +19,8 @@ export function clearToken() {
 
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
-  if (!headers.has("Content-Type") && options.body) {
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  if (!headers.has("Content-Type") && options.body && !isFormData) {
     headers.set("Content-Type", "application/json");
   }
   const token = getToken();
@@ -64,6 +65,11 @@ export const api = {
   delete: <T>(path: string) =>
     apiRequest<T>(path, {
       method: "DELETE"
+    }),
+  postForm: <T>(path: string, body: FormData) =>
+    apiRequest<T>(path, {
+      method: "POST",
+      body
     }),
   put: <T>(path: string, body?: unknown) =>
     apiRequest<T>(path, {
