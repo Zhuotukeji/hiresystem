@@ -9,8 +9,8 @@ services:
     environment:
       PORT: 3001
     restart: unless-stopped
-    expose:
-      - "3001"
+    ports:
+      - "127.0.0.1:3001:3001"
 
   web:
     image: hiresystem-web:latest
@@ -20,23 +20,7 @@ services:
       args:
         VITE_API_BASE_URL: /api
     restart: unless-stopped
-    expose:
-      - "80"
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
+      - "127.0.0.1:5173:80"
     depends_on:
       - api
-      - web
-
-volumes:
-  caddy-data:
-  caddy-config:

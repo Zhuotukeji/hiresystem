@@ -2,10 +2,11 @@
 
 ## 1. 资源建议
 
-- ECS：2 vCPU / 4 GB 起步，Ubuntu 22.04 LTS
-- RDS PostgreSQL：PostgreSQL 16，开启自动备份
-- OSS：用于后续简历附件存储
-- 安全组：开放 22、80、443，数据库仅允许 ECS 内网访问
+- ECS：2 vCPU / 4 GB 起步，Ubuntu 22.04 LTS。
+- RDS PostgreSQL：PostgreSQL 16，开启自动备份。
+- OSS：用于后续简历附件存储。
+- 安全组：开放 22、80、443；数据库仅允许 ECS 内网访问。
+- 入口：使用机器已有 nginx，不再启动 Caddy。
 
 ## 2. ECS 初始化
 
@@ -48,22 +49,42 @@ docker compose -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.prod.yml logs -f api
 ```
 
-API 容器启动时会执行 `prisma migrate deploy`。首次上线后进入 API 容器执行 seed：
+生产 compose 不再占用 80/443：
+
+- API：`127.0.0.1:3001`
+- Web：`127.0.0.1:5173`
+
+首次上线后进入 API 容器执行 seed：
 
 ```bash
 docker compose -f docker-compose.prod.yml exec api pnpm prisma:seed
 ```
 
-## 5. 验收
+## 5. nginx 入口
+
+把 `deploy/nginx-hiresystem.conf` 合并到机器已有 nginx 配置，或按你的域名改 `server_name` 后启用：
 
 ```bash
-curl http://<ecs-ip>/api/health
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+核心代理关系：
+
+- `/api/` -> `http://127.0.0.1:3001/api/`
+- `/` -> `http://127.0.0.1:5173`
+
+## 6. 验收
+
+```bash
+curl http://127.0.0.1:3001/api/health
+curl http://<domain-or-ecs-ip>/api/health
 ```
 
 浏览器访问：
 
 ```text
-http://<ecs-ip>
+http://<domain-or-ecs-ip>
 ```
 
 默认账号：
