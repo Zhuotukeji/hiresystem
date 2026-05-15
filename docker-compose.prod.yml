@@ -8,6 +8,9 @@ services:
       - .env
     environment:
       PORT: 3001
+      SUB2API_BASE_URL: ${SUB2API_BASE_URL:-https://ai.midongtech.com/v1}
+      SUB2API_API_KEY: ${SUB2API_API_KEY:?SUB2API_API_KEY must be set in .env}
+      SUB2API_MODEL: ${SUB2API_MODEL:-gpt-5.5}
     restart: unless-stopped
     ports:
       - "127.0.0.1:3001:3001"

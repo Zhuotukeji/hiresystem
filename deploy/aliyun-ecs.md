@@ -24,7 +24,8 @@ docker compose version
 ```bash
 git clone https://github.com/Zhuotukeji/hiresystem.git
 cd hiresystem
-cp .env.example .env
+cp deploy/production.env.example .env
+chmod 600 .env
 ```
 
 编辑 `.env`，必须配置：
@@ -36,7 +37,7 @@ DATABASE_URL=postgresql://<user>:<password>@<rds-host>:5433/<db>?schema=public
 JWT_SECRET=<strong-random-secret>
 SUB2API_BASE_URL=https://ai.midongtech.com/v1
 SUB2API_API_KEY=<server-secret>
-SUB2API_MODEL=<model-name>
+SUB2API_MODEL=gpt-5.5
 ```
 
 不要把 `.env` 提交到 GitHub。
@@ -47,6 +48,20 @@ SUB2API_MODEL=<model-name>
 docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.prod.yml logs -f api
+```
+
+如果线上 AI 报 `Invalid API key`，优先检查 ECS 当前 `.env` 和容器内环境变量：
+
+```bash
+grep -n '^SUB2API_' .env
+docker compose -f docker-compose.prod.yml exec api sh -lc 'echo "model=$SUB2API_MODEL"; test -n "$SUB2API_API_KEY" && echo "api_key=configured" || echo "api_key=missing"'
+curl http://127.0.0.1:3001/api/health
+```
+
+修改 `.env` 后需要重建/重启 API 容器让新密钥生效：
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build --force-recreate api
 ```
 
 生产 compose 不再占用 80/443：

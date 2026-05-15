@@ -5,6 +5,9 @@ type ChatMessage = {
   content: string;
 };
 
+const DEFAULT_SUB2API_MODEL = "gpt-5.5";
+const PLACEHOLDER_API_KEYS = new Set(["replace-with-server-secret", "<server-secret>", "your-api-key", "your-sub2api-api-key"]);
+
 @Injectable()
 export class AiProvider {
   private get baseUrl() {
@@ -12,16 +15,27 @@ export class AiProvider {
   }
 
   private get apiKey() {
-    return process.env.SUB2API_API_KEY;
+    return process.env.SUB2API_API_KEY?.trim();
   }
 
   get model() {
-    return process.env.SUB2API_MODEL ?? "gpt-4o-mini";
+    return process.env.SUB2API_MODEL?.trim() || DEFAULT_SUB2API_MODEL;
+  }
+
+  get configStatus() {
+    return {
+      baseUrl: this.baseUrl,
+      model: this.model,
+      apiKey: this.apiKeyStatus()
+    };
   }
 
   async completeJson(messages: ChatMessage[]) {
-    if (!this.apiKey) {
-      throw new ServiceUnavailableException("SUB2API_API_KEY is not configured");
+    const apiKeyStatus = this.apiKeyStatus();
+    if (apiKeyStatus !== "configured") {
+      throw new ServiceUnavailableException(
+        "SUB2API_API_KEY is missing or still a placeholder. Set the real key in the server .env file and recreate the api container."
+      );
     }
 
     let response: Response | undefined;
@@ -64,6 +78,11 @@ export class AiProvider {
 
     if (!response.ok) {
       const text = await response.text();
+      if (response.status === 401 || response.status === 403) {
+        throw new ServiceUnavailableException(
+          `AI request rejected (${response.status}). SUB2API_API_KEY is invalid or not authorized for model ${this.model}. Update the server .env file, then recreate the api container.`
+        );
+      }
       throw new ServiceUnavailableException(`AI request failed: ${response.status} ${this.compact(text)}`);
     }
 
@@ -106,6 +125,13 @@ export class AiProvider {
 
   private compact(text: string) {
     return text.replace(/\s+/g, " ").trim().slice(0, 800);
+  }
+
+  private apiKeyStatus() {
+    const apiKey = this.apiKey;
+    if (!apiKey) return "missing";
+    if (PLACEHOLDER_API_KEYS.has(apiKey) || /^replace-|^change-|^your-/i.test(apiKey)) return "placeholder";
+    return "configured";
   }
 
   private sleep(ms: number) {

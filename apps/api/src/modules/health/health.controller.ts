@@ -1,10 +1,14 @@
 import { Controller, Get } from "@nestjs/common";
 import { Public } from "../../common/public.decorator";
+import { AiProvider } from "../ai/ai.provider";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Controller("health")
 export class HealthController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly aiProvider: AiProvider
+  ) {}
 
   @Public()
   @Get()
@@ -13,7 +17,8 @@ export class HealthController {
     return {
       ok: true,
       service: "hiresystem-api",
-      time: new Date().toISOString()
+      time: new Date().toISOString(),
+      ai: this.aiProvider.configStatus
     };
   }
 }
