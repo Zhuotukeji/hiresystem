@@ -17,7 +17,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { Application, Job } from "../api/types";
 import { AiJdAssistant } from "../components/AiJdAssistant";
-import { pipelineStages, stageToKitStage } from "../domain/stages";
+import { pipelineStages, stageLabel, stageToKitStage } from "../domain/stages";
 import { PageHeader } from "../ui/PageHeader";
 import { ScoreTag } from "../ui/ScoreTag";
 
@@ -207,7 +207,7 @@ function Pipeline({ applications, jobId }: { applications: Application[]; jobId:
       {pipelineStages.map((stage) => {
         const stageApps = applications.filter((item) => item.stage === stage);
         return (
-          <Card key={stage} title={`${stage} · ${stageApps.length}`}>
+          <Card key={stage} title={`${stageLabel(stage)} · ${stageApps.length}`}>
             <Space direction="vertical" style={{ width: "100%" }}>
               {stageApps.map((application) => (
                 <Card key={application.id} size="small">
@@ -224,7 +224,7 @@ function Pipeline({ applications, jobId }: { applications: Application[]; jobId:
                       <Select
                         size="small"
                         value={application.stage}
-                        options={pipelineStages.map((value) => ({ value, label: value }))}
+                        options={pipelineStages.map((value) => ({ value, label: stageLabel(value) }))}
                         onChange={(value) => updateStage.mutate({ id: application.id, stage: value })}
                         style={{ width: 160 }}
                       />
