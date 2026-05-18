@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { setDefaultResultOrder } from "node:dns";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import { HttpExceptionFilter } from "./common/http-exception.filter";
 import { AppModule } from "./app.module";
 
 setDefaultResultOrder("ipv4first");
@@ -19,6 +20,7 @@ async function bootstrap() {
       transform: true
     })
   );
+  app.useGlobalFilters(new HttpExceptionFilter());
 
   const port = Number(process.env.PORT ?? 3001);
   await app.listen(port);
