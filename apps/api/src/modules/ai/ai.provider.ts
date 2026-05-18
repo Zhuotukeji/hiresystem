@@ -8,6 +8,9 @@ type ChatMessage = {
 type CompleteJsonOptions = {
   temperature?: number;
   maxCompletionTokens?: number;
+  reasoningEffort?: string;
+  disableReasoningEffortFallback?: boolean;
+  disableMaxTokenFallback?: boolean;
 };
 
 type CompleteJsonResult = {
@@ -19,7 +22,7 @@ const DEFAULT_SUB2API_MODEL = "gpt-5.5";
 const PLACEHOLDER_API_KEYS = new Set(["replace-with-server-secret", "<server-secret>", "your-api-key", "your-sub2api-api-key"]);
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_RETRIES = 1;
-const DEFAULT_REASONING_EFFORT = "minimal";
+const DEFAULT_REASONING_EFFORT = "none";
 const SUPPORTED_REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
 
 @Injectable()
@@ -57,13 +60,14 @@ export class AiProvider {
 
     let response: Response | undefined;
     let lastNetworkError: unknown;
+    const reasoningEffort = options.reasoningEffort ?? this.reasoningEffort;
     for (let attempt = 1; attempt <= this.maxRetries; attempt += 1) {
       try {
         const body: Record<string, unknown> = {
           model: this.model,
           messages,
           temperature: options.temperature ?? 0.2,
-          reasoning_effort: this.reasoningEffort,
+          reasoning_effort: reasoningEffort,
           response_format: { type: "json_object" }
         };
         if (options.maxCompletionTokens) {
@@ -106,8 +110,23 @@ export class AiProvider {
 
     if (!response.ok) {
       const text = await response.text();
-      if (response.status === 400 && options.maxCompletionTokens && /max_completion_tokens|unsupported|unrecognized|unknown/i.test(text)) {
-        return this.completeJson(messages, { ...options, maxCompletionTokens: undefined });
+      if (
+        response.status === 400 &&
+        options.maxCompletionTokens &&
+        !options.disableMaxTokenFallback &&
+        /max_completion_tokens|unsupported|unrecognized|unknown/i.test(text)
+      ) {
+        return this.completeJson(messages, { ...options, maxCompletionTokens: undefined, disableMaxTokenFallback: true });
+      }
+      if (response.status === 400 && !options.disableReasoningEffortFallback && this.isUnsupportedReasoningEffort(text)) {
+        const fallbackReasoningEffort = this.pickFallbackReasoningEffort(text, reasoningEffort);
+        if (fallbackReasoningEffort !== reasoningEffort) {
+          return this.completeJson(messages, {
+            ...options,
+            reasoningEffort: fallbackReasoningEffort,
+            disableReasoningEffortFallback: true
+          });
+        }
       }
       if (response.status === 401 || response.status === 403) {
         throw new ServiceUnavailableException(
@@ -177,6 +196,19 @@ export class AiProvider {
     const raw = process.env.SUB2API_REASONING_EFFORT?.trim().toLowerCase();
     if (!raw) return DEFAULT_REASONING_EFFORT;
     return SUPPORTED_REASONING_EFFORTS.has(raw) ? raw : DEFAULT_REASONING_EFFORT;
+  }
+
+  private isUnsupportedReasoningEffort(text: string) {
+    return /reasoning_effort|reasoning effort|Unsupported value/i.test(text) && /supported values|not supported/i.test(text);
+  }
+
+  private pickFallbackReasoningEffort(text: string, current: string) {
+    const supported = Array.from(text.matchAll(/'([^']+)'/g)).map((match) => match[1].toLowerCase());
+    const preferred = ["none", "low", "medium", "high", "xhigh"];
+    const fallback = preferred.find((item) => item !== current && supported.includes(item));
+    if (fallback) return fallback;
+    if (current !== "none") return "none";
+    return "low";
   }
 
   private readNumberEnv(name: string, fallback: number, min: number, max: number) {

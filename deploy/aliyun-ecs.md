@@ -38,7 +38,7 @@ JWT_SECRET=<strong-random-secret>
 SUB2API_BASE_URL=https://ai.midongtech.com/v1
 SUB2API_API_KEY=<server-secret>
 SUB2API_MODEL=gpt-5.5
-SUB2API_REASONING_EFFORT=minimal
+SUB2API_REASONING_EFFORT=none
 SUB2API_TIMEOUT_MS=120000
 SUB2API_MAX_RETRIES=1
 ```
@@ -60,7 +60,7 @@ docker compose -f docker-compose.prod.yml exec api sh -lc 'echo "model=$SUB2API_
 curl http://127.0.0.1:3001/api/health
 ```
 
-`/api/health` 会显示当前版本、构建时间、AI 模型、reasoning effort、超时时间、重试次数和关键 AI 路由。确认返回里包含 `routes.resumeParse=/api/ai/resume-parse`、`routes.resumeParseText=/api/ai/resume-parse-text`。默认 `SUB2API_REASONING_EFFORT=minimal`，更偏速度；如果网关确认支持更快的 `none`，可改成 `SUB2API_REASONING_EFFORT=none`。简历判断默认走后端异步排队，后台 AI 任务超时下限为 120 秒；如果想提高弱网成功率，把 `SUB2API_MAX_RETRIES` 调到 `2`，但失败任务会更慢。
+`/api/health` 会显示当前版本、构建时间、AI 模型、reasoning effort、超时时间、重试次数和关键 AI 路由。确认返回里包含 `routes.resumeParse=/api/ai/resume-parse`、`routes.resumeParseText=/api/ai/resume-parse-text`。默认 `SUB2API_REASONING_EFFORT=none`，更偏速度；如果网关不支持当前档位，后端会自动降级到可用档位。简历判断默认走后端异步排队，后台 AI 任务超时下限为 120 秒；如果想提高弱网成功率，把 `SUB2API_MAX_RETRIES` 调到 `2`，但失败任务会更慢。
 
 修改 `.env` 后需要重建/重启 API 容器让新密钥生效：
 
