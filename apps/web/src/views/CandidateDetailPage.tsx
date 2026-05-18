@@ -1,6 +1,6 @@
 import { Alert, Button, Card, Descriptions, Modal, Select, Space, Tabs, Tag, Typography, message } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, ApiList } from "../api/client";
 import { Candidate, CandidateEvaluation, Job, ResumeEvaluationResponse } from "../api/types";
@@ -13,12 +13,17 @@ export function CandidateDetailPage() {
   const [jobModalOpen, setJobModalOpen] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string>();
   const [evaluationJobId, setEvaluationJobId] = useState<string>();
+  const [evaluationStatus, setEvaluationStatus] = useState<"idle" | "evaluating" | "completed" | "failed">("idle");
+  const [evaluationBaselineId, setEvaluationBaselineId] = useState<string>();
+  const [queuedEvaluationResponse, setQueuedEvaluationResponse] = useState<ResumeEvaluationResponse>();
+  const [evaluationError, setEvaluationError] = useState("");
   const queryClient = useQueryClient();
 
   const { data: candidate, isLoading } = useQuery({
     queryKey: ["candidate", id],
     queryFn: () => api.get<Candidate>(`/candidates/${id}`),
-    enabled: Boolean(id)
+    enabled: Boolean(id),
+    refetchInterval: evaluationStatus === "evaluating" ? 3000 : false
   });
   const { data: jobs } = useQuery({
     queryKey: ["jobs"],
@@ -41,15 +46,37 @@ export function CandidateDetailPage() {
   });
 
   const evaluateMutation = useMutation({
-    mutationFn: (jobId: string) => api.post<ResumeEvaluationResponse>("/ai/resume-evaluations", { candidateId: id, jobId }),
+    mutationFn: (jobId: string) => api.post<ResumeEvaluationResponse>("/ai/resume-evaluations", { candidateId: id, jobId, mode: "async" }),
+    onMutate: () => {
+      setEvaluationBaselineId(latestEvaluation?.id);
+      setQueuedEvaluationResponse(undefined);
+      setEvaluationError("");
+      setEvaluationStatus("evaluating");
+    },
     onSuccess: (response) => {
-      message.success(`AI 判断已完成：${response.status}`);
+      setQueuedEvaluationResponse(response);
+      message.success(response.status === "queued" ? "AI 判断已开始" : `AI 判断已完成：${response.status}`);
       queryClient.invalidateQueries({ queryKey: ["candidate", id] });
     },
-    onError: (error) => message.error(error instanceof Error ? error.message : "AI 判定失败")
+    onError: (error) => {
+      setEvaluationStatus("failed");
+      setEvaluationError(error instanceof Error ? error.message : "AI 判定失败");
+      message.error(error instanceof Error ? error.message : "AI 判定失败");
+    }
   });
 
-  const canStartEvaluation = canStartManualCandidateEvaluation(evaluationJobId, evaluateMutation.isPending);
+  const canStartEvaluation = canStartManualCandidateEvaluation(evaluationJobId, evaluationStatus === "evaluating" || evaluateMutation.isPending);
+
+  useEffect(() => {
+    if (evaluationStatus !== "evaluating") return;
+    const newestEvaluation = candidate?.evaluations?.[0];
+    if (!newestEvaluation?.id) return;
+    if (newestEvaluation.id === evaluationBaselineId) return;
+
+    setEvaluationStatus("completed");
+    setQueuedEvaluationResponse(evaluationToResponse(newestEvaluation));
+    message.success("AI 判断已完成");
+  }, [candidate?.evaluations, evaluationBaselineId, evaluationStatus]);
 
   return (
     <div className="page">
@@ -64,10 +91,13 @@ export function CandidateDetailPage() {
               options={jobOptions}
               style={{ width: 260 }}
               value={evaluationJobId}
-              disabled={evaluateMutation.isPending}
+              disabled={evaluationStatus === "evaluating" || evaluateMutation.isPending}
               onChange={(value) => {
                 setEvaluationJobId(value);
                 evaluateMutation.reset();
+                setEvaluationStatus("idle");
+                setQueuedEvaluationResponse(undefined);
+                setEvaluationError("");
               }}
               loading={evaluateMutation.isPending}
             />
@@ -91,9 +121,9 @@ export function CandidateDetailPage() {
         />
       ) : null}
       <ManualEvaluationStatusAlert
-        isPending={evaluateMutation.isPending}
-        response={evaluateMutation.data}
-        error={evaluateMutation.error}
+        status={evaluationStatus}
+        response={queuedEvaluationResponse}
+        error={evaluationError}
       />
       <div className="grid grid-3">
         <Card loading={isLoading} title="基础信息">
@@ -168,15 +198,15 @@ export function CandidateDetailPage() {
 }
 
 function ManualEvaluationStatusAlert({
-  isPending,
+  status,
   response,
   error
 }: {
-  isPending: boolean;
+  status: "idle" | "evaluating" | "completed" | "failed";
   response?: ResumeEvaluationResponse;
-  error: Error | null;
+  error: string;
 }) {
-  if (isPending) {
+  if (status === "evaluating") {
     return (
       <Alert
         type="info"
@@ -188,19 +218,19 @@ function ManualEvaluationStatusAlert({
     );
   }
 
-  if (error) {
+  if (status === "failed") {
     return (
       <Alert
         type="warning"
         showIcon
         style={{ marginBottom: 16 }}
         message="AI判断失败"
-        description={error.message}
+        description={error || "候选人资料未受影响，可重新开启 AI 判断。"}
       />
     );
   }
 
-  if (!response) return null;
+  if (status !== "completed" || !response?.result) return null;
 
   return (
     <Alert
@@ -226,6 +256,23 @@ function ManualEvaluationStatusAlert({
       }
     />
   );
+}
+
+function evaluationToResponse(evaluation: CandidateEvaluation): ResumeEvaluationResponse {
+  return {
+    evaluation_id: evaluation.id,
+    status: "completed",
+    result: {
+      match_score: evaluation.matchScore,
+      level: evaluation.level,
+      recommendation: evaluation.recommendation,
+      summary: evaluation.summary,
+      reasons: evaluation.reasons,
+      risks: evaluation.risks,
+      questions_to_confirm: evaluation.questionsToConfirm,
+      suggested_next_step: evaluation.suggestedNextStep
+    }
+  };
 }
 
 function EvaluationSummary({ evaluation }: { evaluation: CandidateEvaluation }) {

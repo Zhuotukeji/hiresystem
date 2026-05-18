@@ -1,4 +1,4 @@
-import { BadGatewayException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadGatewayException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { AiTaskStatus, AiTaskType, ApplicationStage, Prisma } from "@prisma/client";
 import {
   InterviewKitResult,
@@ -31,6 +31,8 @@ import { ResumeUploadFile, extractResumeText } from "./resume-extractor";
 
 @Injectable()
 export class AiService {
+  private readonly logger = new Logger(AiService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiProvider: AiProvider
@@ -215,6 +217,10 @@ export class AiService {
   }
 
   async generateResumeEvaluation(dto: ResumeEvaluationDto, userId?: string) {
+    if (dto.mode === "async") {
+      return this.queueResumeEvaluation(dto, userId);
+    }
+
     const candidate = await this.prisma.candidate.findUnique({
       where: { id: dto.candidateId },
       include: { currentCompany: true, evaluations: { orderBy: { createdAt: "desc" }, take: 3 } }
@@ -313,6 +319,41 @@ export class AiService {
         createdBy: userId
       }
     });
+  }
+
+  private async queueResumeEvaluation(dto: ResumeEvaluationDto, userId?: string) {
+    const candidate = await this.prisma.candidate.findUnique({
+      where: { id: dto.candidateId },
+      select: { id: true, sourceChannel: true, sourceOwnerId: true }
+    });
+    if (!candidate) throw new NotFoundException("Candidate not found");
+
+    const job = await this.prisma.job.findUnique({ where: { id: dto.jobId }, select: { id: true } });
+    if (!job) throw new NotFoundException("Job not found");
+
+    const application = await this.prisma.application.upsert({
+      where: { candidateId_jobId: { candidateId: candidate.id, jobId: job.id } },
+      update: {},
+      create: {
+        candidateId: candidate.id,
+        jobId: job.id,
+        source: candidate.sourceChannel,
+        ownerId: candidate.sourceOwnerId,
+        stage: ApplicationStage.NEW
+      }
+    });
+
+    void this.generateResumeEvaluation({ ...dto, applicationId: application.id, mode: "sync" }, userId).catch((error) => {
+      const message = error instanceof Error ? error.stack ?? error.message : String(error);
+      this.logger.error(`Async resume evaluation failed for candidate ${dto.candidateId} and job ${dto.jobId}: ${message}`);
+    });
+
+    return {
+      status: "queued",
+      candidate_id: candidate.id,
+      job_id: job.id,
+      application_id: application.id
+    };
   }
 
   async generateInterviewKit(applicationId: string, stage: string, userId?: string) {

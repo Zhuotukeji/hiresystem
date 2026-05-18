@@ -151,10 +151,13 @@ export type ResumeParseResult = {
 };
 
 export type ResumeEvaluationResponse = {
-  evaluation_id: string;
+  evaluation_id?: string;
   status: string;
   interview_kit_status?: string;
-  result: {
+  candidate_id?: string;
+  job_id?: string;
+  application_id?: string;
+  result?: {
     match_score: number;
     level: string;
     recommendation: string;

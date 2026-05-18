@@ -20,10 +20,10 @@ import {
 import { UploadOutlined } from "@ant-design/icons";
 import type { UploadFile } from "antd/es/upload/interface";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiList } from "../api/client";
-import { Candidate, Job, ResumeEvaluationResponse, ResumeParseResult } from "../api/types";
+import { Candidate, CandidateEvaluation, Job, ResumeEvaluationResponse, ResumeParseResult } from "../api/types";
 import { canDeleteResource } from "../domain/permissions";
 import { getCandidateAiSubmitBlocker, hasResumeInput } from "../domain/candidateAi";
 import { useCurrentPermissions } from "../hooks/useCurrentUser";
@@ -76,6 +76,13 @@ export function CandidatesPage() {
   const jobsQuery = useQuery({
     queryKey: ["jobs", "open-for-candidate-ai"],
     queryFn: () => api.get<ApiList<Job>>("/jobs?status=OPEN")
+  });
+
+  const createdCandidateQuery = useQuery({
+    queryKey: ["candidate", createdCandidate?.id, "ai-evaluation-poll"],
+    queryFn: () => api.get<Candidate>(`/candidates/${createdCandidate?.id}`),
+    enabled: Boolean(createdCandidate?.id && aiEvaluationStatus === "evaluating"),
+    refetchInterval: aiEvaluationStatus === "evaluating" ? 3000 : false
   });
 
   const jobOptions = useMemo(
@@ -158,11 +165,16 @@ export function CandidatesPage() {
 
   const evaluateCandidateMutation = useMutation({
     mutationFn: ({ candidateId, jobId }: { candidateId: string; jobId: string }) =>
-      api.post<ResumeEvaluationResponse>("/ai/resume-evaluations", { candidateId, jobId }),
+      api.post<ResumeEvaluationResponse>("/ai/resume-evaluations", { candidateId, jobId, mode: "async" }),
     onSuccess: (evaluation) => {
-      setLatestEvaluation(evaluation);
-      setAiEvaluationStatus("completed");
-      message.success(`AI 判断已完成：${evaluation.status}`);
+      if (evaluation.result) {
+        setLatestEvaluation(evaluation);
+        setAiEvaluationStatus("completed");
+        message.success(`AI 判断已完成：${evaluation.status}`);
+      } else {
+        setAiEvaluationStatus("evaluating");
+        message.success("AI 判断已开始");
+      }
       queryClient.invalidateQueries({ queryKey: ["candidates"] });
     },
     onError: (error) => {
@@ -183,6 +195,17 @@ export function CandidatesPage() {
   });
 
   const canDeleteCandidate = canDeleteResource(permissions.data, "CANDIDATE");
+
+  useEffect(() => {
+    if (aiEvaluationStatus !== "evaluating") return;
+    const evaluation = createdCandidateQuery.data?.evaluations?.[0];
+    if (!evaluation) return;
+
+    setLatestEvaluation(evaluationToResponse(evaluation));
+    setAiEvaluationStatus("completed");
+    message.success("AI 判断已完成");
+    queryClient.invalidateQueries({ queryKey: ["candidates"] });
+  }, [aiEvaluationStatus, createdCandidateQuery.data?.evaluations, queryClient]);
 
   function closeModal() {
     setOpen(false);
@@ -328,7 +351,7 @@ export function CandidatesPage() {
                     error={aiEvaluationError}
                   />
 
-                  {latestEvaluation ? (
+                  {latestEvaluation?.result ? (
                     <EvaluationResult response={latestEvaluation} candidate={createdCandidate} />
                   ) : null}
 
@@ -504,6 +527,8 @@ function EvaluationResult({
   candidate: Candidate | null;
 }) {
   const result = response.result;
+  if (!result) return null;
+
   return (
     <Alert
       type={result.level === "green" ? "success" : result.level === "red" ? "warning" : "info"}
@@ -527,6 +552,23 @@ function EvaluationResult({
       }
     />
   );
+}
+
+function evaluationToResponse(evaluation: CandidateEvaluation): ResumeEvaluationResponse {
+  return {
+    evaluation_id: evaluation.id,
+    status: "completed",
+    result: {
+      match_score: evaluation.matchScore,
+      level: evaluation.level,
+      recommendation: evaluation.recommendation,
+      summary: evaluation.summary,
+      reasons: evaluation.reasons,
+      risks: evaluation.risks,
+      questions_to_confirm: evaluation.questionsToConfirm,
+      suggested_next_step: evaluation.suggestedNextStep
+    }
+  };
 }
 
 function toCandidatePayload(values: CandidateFormValues) {

@@ -7,7 +7,7 @@ type ChatMessage = {
 
 const DEFAULT_SUB2API_MODEL = "gpt-5.5";
 const PLACEHOLDER_API_KEYS = new Set(["replace-with-server-secret", "<server-secret>", "your-api-key", "your-sub2api-api-key"]);
-const DEFAULT_TIMEOUT_MS = 45_000;
+const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_RETRIES = 1;
 const DEFAULT_REASONING_EFFORT = "low";
 const SUPPORTED_REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
@@ -81,6 +81,11 @@ export class AiProvider {
     }
 
     if (!response) {
+      if (this.isTimeoutError(lastNetworkError)) {
+        throw new ServiceUnavailableException(
+          `AI request timed out after ${this.timeoutMs}ms. Increase SUB2API_TIMEOUT_MS or use async evaluation mode for long-running tasks.`
+        );
+      }
       throw new ServiceUnavailableException(`AI service is unreachable after retries: ${this.formatError(lastNetworkError)}`);
     }
 
@@ -143,7 +148,7 @@ export class AiProvider {
   }
 
   private get timeoutMs() {
-    return this.readNumberEnv("SUB2API_TIMEOUT_MS", DEFAULT_TIMEOUT_MS, 10_000, 120_000);
+    return this.readNumberEnv("SUB2API_TIMEOUT_MS", DEFAULT_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, 300_000);
   }
 
   private get maxRetries() {
@@ -162,6 +167,10 @@ export class AiProvider {
     const value = Number.parseInt(raw, 10);
     if (Number.isNaN(value)) return fallback;
     return Math.min(max, Math.max(min, value));
+  }
+
+  private isTimeoutError(error: unknown) {
+    return error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name);
   }
 
   private sleep(ms: number) {
