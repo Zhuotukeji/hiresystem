@@ -144,18 +144,9 @@ export class AiService {
     const inputSnapshot = {
       sessionId,
       userMessage: dto.content,
-      history: session.messages.map((message) => ({ role: message.role, content: message.content })),
+      history: this.compactJdChatHistory(session.messages),
       job_context: jobContext
-        ? {
-            id: jobContext.id,
-            title: jobContext.title,
-            department: jobContext.department,
-            city: jobContext.city,
-            salaryMin: jobContext.salaryMin,
-            salaryMax: jobContext.salaryMax,
-            jd: jobContext.jd,
-            profile: jobContext.profile
-          }
+        ? this.compactJdJobContext(jobContext)
         : null
     };
     const task = await this.createTask(AiTaskType.JD_CHAT, inputSnapshot, userId);
@@ -175,7 +166,7 @@ export class AiService {
               "必须以 latest_user_message 和 job_context 为唯一事实来源。岗位名称、职责、要求必须匹配用户指定岗位；如果用户要求 HRBP/人力资源业务伙伴，不得生成产品经理或其他岗位。"
           })
         }
-      ]);
+      ], { temperature: 0.2, maxCompletionTokens: 2200 });
       const parsed = jdAssistantResultSchema.safeParse(normalizeJdAssistantPayload(response.data));
       if (!parsed.success) {
         throw new BadGatewayException(`AI JD output schema mismatch: ${parsed.error.issues
@@ -195,18 +186,21 @@ export class AiService {
         result
       });
       if (!consistency.ok) {
-        response = await this.aiProvider.completeJson([
-          { role: "system", content: `${jsonOnlySystemPrompt}\n${jdAssistantPrompt}\n${jdRoleConsistencyPrompt}` },
-          {
-            role: "user",
-            content: JSON.stringify({
-              instruction: buildJdRoleCorrectionPrompt(consistency),
-              history: inputSnapshot.history,
-              latest_user_message: dto.content,
-              job_context: inputSnapshot.job_context
-            })
-          }
-        ]);
+        response = await this.aiProvider.completeJson(
+          [
+            { role: "system", content: `${jsonOnlySystemPrompt}\n${jdAssistantPrompt}\n${jdRoleConsistencyPrompt}` },
+            {
+              role: "user",
+              content: JSON.stringify({
+                instruction: buildJdRoleCorrectionPrompt(consistency),
+                history: inputSnapshot.history,
+                latest_user_message: dto.content,
+                job_context: inputSnapshot.job_context
+              })
+            }
+          ],
+          { temperature: 0.1, maxCompletionTokens: 2200 }
+        );
         const retryParsed = jdAssistantResultSchema.safeParse(normalizeJdAssistantPayload(response.data));
         if (!retryParsed.success) {
           throw new BadGatewayException(`AI JD output schema mismatch: ${retryParsed.error.issues
@@ -250,6 +244,67 @@ export class AiService {
       await this.failTask(task.id, error);
       throw error;
     }
+  }
+
+  private compactJdChatHistory(messages: Array<{ role: string; content: string }>) {
+    return messages.slice(-8).map((message) => ({
+      role: message.role,
+      content: this.compactText(message.content, message.role === "assistant" ? 1800 : 1200)
+    }));
+  }
+
+  private compactJdJobContext(
+    job: {
+      id: string;
+      title: string;
+      department?: string | null;
+      city?: string | null;
+      salaryMin?: number | null;
+      salaryMax?: number | null;
+      jd?: string | null;
+      profile?: {
+        mission?: string | null;
+        mustHaveSkills?: string[];
+        niceToHaveSkills?: string[];
+        keyProjectExperience?: string[];
+        knockoutRules?: string[];
+        flexibleRules?: string[];
+        screeningQuestions?: string[];
+        interviewDimensions?: string[];
+        targetCompanies?: string[];
+        targetTitles?: string[];
+        targetLevels?: string[];
+      } | null;
+    }
+  ) {
+    return {
+      id: job.id,
+      title: job.title,
+      department: job.department,
+      city: job.city,
+      salaryMin: job.salaryMin,
+      salaryMax: job.salaryMax,
+      jd: this.compactText(job.jd ?? "", 3200),
+      profile: job.profile
+        ? {
+            mission: this.compactText(job.profile.mission ?? "", 600),
+            mustHaveSkills: this.compactJdArray(job.profile.mustHaveSkills),
+            niceToHaveSkills: this.compactJdArray(job.profile.niceToHaveSkills),
+            keyProjectExperience: this.compactJdArray(job.profile.keyProjectExperience),
+            knockoutRules: this.compactJdArray(job.profile.knockoutRules),
+            flexibleRules: this.compactJdArray(job.profile.flexibleRules),
+            screeningQuestions: this.compactJdArray(job.profile.screeningQuestions),
+            interviewDimensions: this.compactJdArray(job.profile.interviewDimensions),
+            targetCompanies: this.compactJdArray(job.profile.targetCompanies),
+            targetTitles: this.compactJdArray(job.profile.targetTitles),
+            targetLevels: this.compactJdArray(job.profile.targetLevels)
+          }
+        : null
+    };
+  }
+
+  private compactJdArray(value?: string[], maxItems = 12, maxLength = 80) {
+    return (value ?? []).map((item) => this.compactText(item, maxLength)).filter(Boolean).slice(0, maxItems);
   }
 
   async generateResumeEvaluation(dto: ResumeEvaluationDto, userId?: string) {

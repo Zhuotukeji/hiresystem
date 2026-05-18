@@ -42,6 +42,6 @@ APP_VERSION=$(git rev-parse --short HEAD) APP_BUILD_TIME=$(date -u +%Y-%m-%dT%H:
 - ECS 安全组只开放 80/443/SSH
 - `.env` 中配置真实 `DATABASE_URL` 和 `SUB2API_*`
 - AI 默认模型为 `gpt-5.5`，生产环境在 `.env` 中配置 `SUB2API_MODEL=gpt-5.5`
-- AI 默认使用 `SUB2API_REASONING_EFFORT=none`，更偏速度；如果网关不支持会自动降级到可用档位
+- AI 默认使用 `SUB2API_REASONING_EFFORT=none`，更偏速度；如果网关不支持会自动降级到可用档位；`SUB2API_MAX_RETRIES=3` 可降低上游 502 抖动对页面的影响
 - `/api/health` 会返回版本、构建时间、关键 AI 路由、AI 的 baseURL、model、reasoning effort、timeout、retry 和 API Key 配置状态，便于确认线上是否部署到最新镜像
 - 简历判定通过后，初面套件改为后台生成，避免接口同步等待第二次 AI 调用

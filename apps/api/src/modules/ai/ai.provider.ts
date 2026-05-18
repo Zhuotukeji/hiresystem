@@ -11,6 +11,7 @@ type CompleteJsonOptions = {
   reasoningEffort?: string;
   disableReasoningEffortFallback?: boolean;
   disableMaxTokenFallback?: boolean;
+  omitReasoningEffort?: boolean;
 };
 
 type CompleteJsonResult = {
@@ -21,7 +22,7 @@ type CompleteJsonResult = {
 const DEFAULT_SUB2API_MODEL = "gpt-5.5";
 const PLACEHOLDER_API_KEYS = new Set(["replace-with-server-secret", "<server-secret>", "your-api-key", "your-sub2api-api-key"]);
 const DEFAULT_TIMEOUT_MS = 120_000;
-const DEFAULT_MAX_RETRIES = 1;
+const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_REASONING_EFFORT = "none";
 const SUPPORTED_REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
 
@@ -67,9 +68,11 @@ export class AiProvider {
           model: this.model,
           messages,
           temperature: options.temperature ?? 0.2,
-          reasoning_effort: reasoningEffort,
           response_format: { type: "json_object" }
         };
+        if (!options.omitReasoningEffort) {
+          body.reasoning_effort = reasoningEffort;
+        }
         if (options.maxCompletionTokens) {
           body.max_completion_tokens = options.maxCompletionTokens;
         }
@@ -128,12 +131,19 @@ export class AiProvider {
           });
         }
       }
+      if (response.status >= 500 && !options.omitReasoningEffort && !options.disableReasoningEffortFallback) {
+        return this.completeJson(messages, {
+          ...options,
+          omitReasoningEffort: true,
+          disableReasoningEffortFallback: true
+        });
+      }
       if (response.status === 401 || response.status === 403) {
         throw new ServiceUnavailableException(
           `AI request rejected (${response.status}). SUB2API_API_KEY is invalid or not authorized for model ${this.model}. Update the server .env file, then recreate the api container.`
         );
       }
-      throw new ServiceUnavailableException(`AI request failed: ${response.status} ${this.compact(text)}`);
+      throw new ServiceUnavailableException(`AI request failed after retries: ${response.status} ${this.compact(text)}`);
     }
 
     const payload = await response.json();
