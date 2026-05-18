@@ -110,6 +110,29 @@ export function normalizeResumeEvaluationPayload(raw: unknown) {
   };
 }
 
+export function normalizeInterviewKitPayload(raw: unknown, requestedStage?: string) {
+  const payload = asObject(raw);
+  const source = asObject(payload.interview_kit ?? payload.interviewKit ?? payload.kit);
+  const kit = Object.keys(source).length ? source : payload;
+
+  return {
+    stage: normalizeInterviewStage(firstText(kit.stage, kit.interview_stage, kit.interviewStage, kit.round), requestedStage),
+    goal: firstText(kit.goal, kit.objective, kit.purpose, kit.interview_goal, kit.interviewGoal) || "验证候选人与当前岗位的匹配度",
+    focus_areas: toStringArray(kit.focus_areas ?? kit.focusAreas ?? kit.focus ?? kit.key_focus).slice(0, 8),
+    must_ask_questions: normalizeInterviewQuestions(
+      kit.must_ask_questions ?? kit.mustAskQuestions ?? kit.required_questions ?? kit.core_questions ?? kit.questions
+    ).slice(0, 8),
+    resume_based_questions: normalizeInterviewQuestions(
+      kit.resume_based_questions ?? kit.resumeBasedQuestions ?? kit.resume_questions ?? kit.resumeQuestions ?? kit.risk_questions
+    ).slice(0, 8),
+    case_questions: normalizeInterviewQuestions(kit.case_questions ?? kit.caseQuestions ?? kit.scenario_questions).slice(0, 5),
+    good_signals: toStringArray(kit.good_signals ?? kit.goodSignals ?? kit.positive_signals).slice(0, 8),
+    bad_signals: toStringArray(kit.bad_signals ?? kit.badSignals ?? kit.risk_signals ?? kit.negative_signals).slice(0, 8),
+    pass_criteria: toStringArray(kit.pass_criteria ?? kit.passCriteria ?? kit.pass_standards).slice(0, 8),
+    red_flags: toStringArray(kit.red_flags ?? kit.redFlags ?? kit.knockout_signals).slice(0, 8)
+  };
+}
+
 function asObject(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : {};
 }
@@ -180,6 +203,39 @@ function normalizeEvidence(value: unknown) {
     })
     .filter((item) => item.text)
     .slice(0, 5);
+}
+
+function normalizeInterviewQuestions(value: unknown) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        const object = asObject(item);
+        if (!Object.keys(object).length && typeof item === "string") {
+          return { question: item.trim(), evaluation_points: [], purpose: "" };
+        }
+        return {
+          question: firstText(object.question, object.title, object.content, object.text),
+          evaluation_points: toStringArray(
+            object.evaluation_points ?? object.evaluationPoints ?? object.points ?? object.criteria ?? object.assessment_points
+          ),
+          purpose: firstText(object.purpose, object.goal, object.why, object.reason)
+        };
+      })
+      .filter((item) => item.question);
+  }
+  return toStringArray(value).map((question) => ({ question, evaluation_points: [], purpose: "" }));
+}
+
+function normalizeInterviewStage(value: string, requestedStage?: string) {
+  const text = value.trim();
+  const lower = text.toLowerCase();
+  if (["hr_screen", "first_interview", "second_interview", "final_interview"].includes(lower)) return lower;
+  if (["HR_SCREEN", "FIRST_INTERVIEW", "SECOND_INTERVIEW", "FINAL_INTERVIEW"].includes(text)) return text.toLowerCase();
+  if (/hr|初筛|电话|screen/.test(lower) || /初筛/.test(text)) return "hr_screen";
+  if (/first|一面|1面|第一轮/.test(lower) || /一面|第一轮/.test(text)) return "first_interview";
+  if (/second|二面|2面|第二轮/.test(lower) || /二面|第二轮/.test(text)) return "second_interview";
+  if (/final|终面|最终/.test(lower) || /终面|最终/.test(text)) return "final_interview";
+  return requestedStage && requestedStage.trim() ? requestedStage.trim() : "hr_screen";
 }
 
 function toNumber(value: unknown) {

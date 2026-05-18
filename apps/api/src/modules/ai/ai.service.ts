@@ -16,7 +16,12 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateJdSessionDto, OverrideEvaluationDto, ResumeEvaluationDto, ResumeParseDto, SendJdMessageDto } from "./ai.dto";
 import { buildJdRoleCorrectionPrompt, validateJdRoleConsistency } from "./jd-role-consistency";
-import { normalizeJdAssistantPayload, normalizeResumeEvaluationPayload, normalizeResumeParsePayload } from "./ai.normalizers";
+import {
+  normalizeInterviewKitPayload,
+  normalizeJdAssistantPayload,
+  normalizeResumeEvaluationPayload,
+  normalizeResumeParsePayload
+} from "./ai.normalizers";
 import { AiProvider } from "./ai.provider";
 import {
   interviewKitPrompt,
@@ -479,11 +484,26 @@ export class AiService {
     const task = await this.createTask(AiTaskType.INTERVIEW_KIT, inputSnapshot, userId);
 
     try {
-      const response = await this.aiProvider.completeJson([
-        { role: "system", content: `${jsonOnlySystemPrompt}\n${interviewKitPrompt}` },
-        { role: "user", content: JSON.stringify(inputSnapshot) }
-      ]);
-      const result = interviewKitResultSchema.parse(response.data);
+      let response;
+      let result: InterviewKitResult;
+      try {
+        response = await this.aiProvider.completeJson(this.interviewKitMessages(inputSnapshot, stage), {
+          temperature: 0,
+          maxCompletionTokens: 1800
+        });
+        result = this.parseInterviewKitResult(response.data, stage);
+      } catch (error) {
+        this.logger.warn(`AI interview kit output needs retry task=${task.id}: ${error instanceof Error ? error.message : String(error)}`);
+        response = await this.aiProvider.completeJson(
+          this.interviewKitMessages(
+            inputSnapshot,
+            stage,
+            "上一轮输出不是系统要求的JSON结构。请只输出合法JSON，并严格使用 stage、goal、focus_areas、must_ask_questions、resume_based_questions、case_questions、good_signals、bad_signals、pass_criteria、red_flags 字段。问题对象只能使用 question、evaluation_points、purpose。"
+          ),
+          { temperature: 0, maxCompletionTokens: 1800 }
+        );
+        result = this.parseInterviewKitResult(response.data, stage);
+      }
       await this.completeTask(task.id, result, response.usage);
 
       const kit = await this.prisma.interviewKit.create({
@@ -690,6 +710,41 @@ export class AiService {
     ];
   }
 
+  private interviewKitMessages(inputSnapshot: unknown, stage: string, extraInstruction?: string) {
+    return [
+      { role: "system" as const, content: `${jsonOnlySystemPrompt}\n${interviewKitPrompt}` },
+      {
+        role: "user" as const,
+        content: JSON.stringify({
+          ...(extraInstruction ? { correction_instruction: extraInstruction } : {}),
+          output_contract: {
+            stage,
+            goal: "本轮面试目标，80字以内",
+            focus_areas: "string[]，最多8条",
+            must_ask_questions: "array of { question, evaluation_points, purpose }，最多8题",
+            resume_based_questions: "array of { question, evaluation_points, purpose }，最多8题",
+            case_questions: "array of { question, evaluation_points, purpose }，最多5题",
+            good_signals: "string[]，最多8条",
+            bad_signals: "string[]，最多8条",
+            pass_criteria: "string[]，最多8条",
+            red_flags: "string[]，最多8条"
+          },
+          input: inputSnapshot
+        })
+      }
+    ];
+  }
+
+  private parseInterviewKitResult(raw: unknown, requestedStage: string): InterviewKitResult {
+    const parsed = interviewKitResultSchema.safeParse(normalizeInterviewKitPayload(raw, requestedStage));
+    if (!parsed.success) {
+      throw new BadGatewayException(`AI interview kit output schema mismatch: ${parsed.error.issues
+        .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+        .join("; ")}`);
+    }
+    return parsed.data;
+  }
+
   private parseResumeResult(raw: unknown, resumeText: string): ResumeParseResult {
     const parsed = resumeParseResultSchema.safeParse(normalizeResumeParsePayload(raw, resumeText));
     if (!parsed.success) {
@@ -840,7 +895,7 @@ export class AiService {
         taskType,
         status: AiTaskStatus.RUNNING,
         modelName: this.aiProvider.model,
-        inputSnapshot: inputSnapshot as Prisma.InputJsonValue,
+        inputSnapshot: this.toJsonValue(inputSnapshot),
         createdBy
       }
     });
@@ -851,7 +906,7 @@ export class AiService {
       where: { id },
       data: {
         status: AiTaskStatus.COMPLETED,
-        outputSnapshot: outputSnapshot as Prisma.InputJsonValue,
+        outputSnapshot: this.toJsonValue(outputSnapshot),
         tokenUsagePrompt: usage?.prompt_tokens,
         tokenUsageCompletion: usage?.completion_tokens,
         completedAt: new Date()
@@ -869,5 +924,10 @@ export class AiService {
         completedAt: new Date()
       }
     });
+  }
+
+  private toJsonValue(value: unknown) {
+    const json = JSON.stringify(value ?? null, (_key, item) => (typeof item === "bigint" ? item.toString() : item));
+    return JSON.parse(json ?? "null") as Prisma.InputJsonValue;
   }
 }

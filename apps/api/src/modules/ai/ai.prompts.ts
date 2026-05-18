@@ -104,6 +104,20 @@ export const interviewKitPrompt = `
 请基于候选人简历、岗位画像、AI简历判定和历史面试反馈，生成当前阶段的面试套件。
 每个问题必须服务于本轮面试目标，并给出 evaluation_points 和 purpose。
 问题不能涉及年龄、婚育、宗教、民族、健康隐私等不合规内容。
+输出必须严格使用下面的JSON字段名：
+{
+  "stage": "hr_screen | first_interview | second_interview | final_interview",
+  "goal": "本轮面试目标",
+  "focus_areas": ["本轮重点关注"],
+  "must_ask_questions": [{ "question": "必问问题", "evaluation_points": ["评价点"], "purpose": "提问目的" }],
+  "resume_based_questions": [{ "question": "基于简历风险的问题", "evaluation_points": ["评价点"], "purpose": "提问目的" }],
+  "case_questions": [{ "question": "场景/案例题", "evaluation_points": ["评价点"], "purpose": "提问目的" }],
+  "good_signals": ["好答案信号"],
+  "bad_signals": ["风险信号"],
+  "pass_criteria": ["通过标准"],
+  "red_flags": ["直接淘汰信号"]
+}
+不要输出 mustAskQuestions、focusAreas、questions 等替代字段；必须使用 snake_case 字段。
 `;
 
 export const stageHandoffPrompt = `
