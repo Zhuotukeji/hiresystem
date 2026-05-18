@@ -153,6 +153,7 @@ export type ResumeParseResult = {
 export type ResumeEvaluationResponse = {
   evaluation_id: string;
   status: string;
+  interview_kit_status?: string;
   result: {
     match_score: number;
     level: string;

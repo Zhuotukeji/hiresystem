@@ -52,6 +52,8 @@ type CandidateFormValues = {
   aiSummary?: string;
 };
 
+type AiEvaluationUiStatus = "idle" | "evaluating" | "completed" | "failed";
+
 export function CandidatesPage() {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("ai");
@@ -59,8 +61,10 @@ export function CandidatesPage() {
   const [aiForm] = Form.useForm<CandidateFormValues>();
   const [resumeFileList, setResumeFileList] = useState<UploadFile[]>([]);
   const [parsedResume, setParsedResume] = useState<ResumeParseResult | null>(null);
-  const [latestEvaluation, setLatestEvaluation] = useState<ResumeEvaluationResponse["result"] | null>(null);
+  const [latestEvaluation, setLatestEvaluation] = useState<ResumeEvaluationResponse | null>(null);
   const [createdCandidate, setCreatedCandidate] = useState<Candidate | null>(null);
+  const [aiEvaluationStatus, setAiEvaluationStatus] = useState<AiEvaluationUiStatus>("idle");
+  const [aiEvaluationError, setAiEvaluationError] = useState("");
   const queryClient = useQueryClient();
   const permissions = useCurrentPermissions();
 
@@ -114,6 +118,8 @@ export function CandidatesPage() {
       setParsedResume(result);
       setLatestEvaluation(null);
       setCreatedCandidate(null);
+      setAiEvaluationStatus("idle");
+      setAiEvaluationError("");
       aiForm.setFieldsValue({
         ...result,
         yearsOfExperience: result.yearsOfExperience ?? undefined,
@@ -136,27 +142,35 @@ export function CandidatesPage() {
       if (blocker) throw new Error(blocker);
 
       const candidate = await api.post<Candidate>("/candidates", toCandidatePayload(values));
-      setCreatedCandidate(candidate);
-      queryClient.invalidateQueries({ queryKey: ["candidates"] });
-      let evaluation: ResumeEvaluationResponse;
-      try {
-        evaluation = await api.post<ResumeEvaluationResponse>("/ai/resume-evaluations", {
-          candidateId: candidate.id,
-          jobId: values.jobId
-        });
-      } catch (error) {
-        const messageText = error instanceof Error ? error.message : "AI 判定失败";
-        throw new Error(`候选人已保存，但 AI 判定失败：${messageText}`);
-      }
-      return { candidate, evaluation };
+      return { candidate, jobId: values.jobId as string };
     },
-    onSuccess: ({ candidate, evaluation }) => {
+    onSuccess: ({ candidate, jobId }) => {
       setCreatedCandidate(candidate);
-      setLatestEvaluation(evaluation.result);
-      message.success("候选人已保存，AI 判定已完成");
+      setLatestEvaluation(null);
+      setAiEvaluationError("");
+      setAiEvaluationStatus("evaluating");
+      message.success("候选人已保存，AI 判断已开始");
+      queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      evaluateCandidateMutation.mutate({ candidateId: candidate.id, jobId });
+    },
+    onError: (error) => message.error(error instanceof Error ? error.message : "保存失败")
+  });
+
+  const evaluateCandidateMutation = useMutation({
+    mutationFn: ({ candidateId, jobId }: { candidateId: string; jobId: string }) =>
+      api.post<ResumeEvaluationResponse>("/ai/resume-evaluations", { candidateId, jobId }),
+    onSuccess: (evaluation) => {
+      setLatestEvaluation(evaluation);
+      setAiEvaluationStatus("completed");
+      message.success(`AI 判断已完成：${evaluation.status}`);
       queryClient.invalidateQueries({ queryKey: ["candidates"] });
     },
-    onError: (error) => message.error(error instanceof Error ? error.message : "保存或判定失败")
+    onError: (error) => {
+      setAiEvaluationStatus("failed");
+      setAiEvaluationError(error instanceof Error ? error.message : "AI 判断失败");
+      message.error(error instanceof Error ? error.message : "AI 判断失败");
+      queryClient.invalidateQueries({ queryKey: ["candidates"] });
+    }
   });
 
   const deleteMutation = useMutation({
@@ -179,6 +193,8 @@ export function CandidatesPage() {
     setParsedResume(null);
     setLatestEvaluation(null);
     setCreatedCandidate(null);
+    setAiEvaluationStatus("idle");
+    setAiEvaluationError("");
   }
 
   return (
@@ -304,17 +320,16 @@ export function CandidatesPage() {
                     </Form.Item>
                   </Form>
 
-                  {createdCandidate && !latestEvaluation ? (
-                    <Alert
-                      type="warning"
-                      showIcon
-                      message="候选人已保存，AI 判定尚未完成"
-                      description={<Link to={`/candidates/${createdCandidate.id}`}>进入候选人详情页后可重新触发 AI 简历判定</Link>}
-                    />
-                  ) : null}
+                  <AiEvaluationStatusAlert
+                    status={aiEvaluationStatus}
+                    responseStatus={latestEvaluation?.status}
+                    interviewKitStatus={latestEvaluation?.interview_kit_status}
+                    candidate={createdCandidate}
+                    error={aiEvaluationError}
+                  />
 
                   {latestEvaluation ? (
-                    <EvaluationResult result={latestEvaluation} candidate={createdCandidate} />
+                    <EvaluationResult response={latestEvaluation} candidate={createdCandidate} />
                   ) : null}
 
                   <Space style={{ width: "100%", justifyContent: "flex-end" }}>
@@ -322,7 +337,7 @@ export function CandidatesPage() {
                     <Button
                       type="primary"
                       loading={createAndEvaluateMutation.isPending}
-                      disabled={Boolean(aiSubmitBlocker) || Boolean(createdCandidate)}
+                      disabled={Boolean(aiSubmitBlocker) || Boolean(createdCandidate) || aiEvaluationStatus === "evaluating"}
                       onClick={() => createAndEvaluateMutation.mutate()}
                     >
                       保存并判断是否进入HR初试
@@ -416,13 +431,79 @@ function CandidateFields() {
   );
 }
 
+function AiEvaluationStatusAlert({
+  status,
+  responseStatus,
+  interviewKitStatus,
+  candidate,
+  error
+}: {
+  status: AiEvaluationUiStatus;
+  responseStatus?: string;
+  interviewKitStatus?: string;
+  candidate: Candidate | null;
+  error: string;
+}) {
+  if (status === "idle") return null;
+
+  if (status === "evaluating") {
+    return (
+      <Alert
+        type="info"
+        showIcon
+        message="AI判断中..."
+        description={
+          <Space direction="vertical" size={4}>
+            <Typography.Text>候选人已保存，系统正在异步判断是否进入下一阶段。</Typography.Text>
+            {candidate ? <Link to={`/candidates/${candidate.id}`}>查看候选人详情</Link> : null}
+          </Space>
+        }
+      />
+    );
+  }
+
+  if (status === "failed") {
+    return (
+      <Alert
+        type="warning"
+        showIcon
+        message="AI判断失败"
+        description={
+          <Space direction="vertical" size={4}>
+            <Typography.Text>{error || "候选人已保存，但 AI 判断没有完成。"}</Typography.Text>
+            {candidate ? <Link to={`/candidates/${candidate.id}`}>进入候选人详情页后可重新触发 AI 简历判定</Link> : null}
+          </Space>
+        }
+      />
+    );
+  }
+
+  return (
+    <Alert
+      type="success"
+      showIcon
+      message="AI判断完成"
+      description={
+        <Space direction="vertical" size={4}>
+          <Typography.Text>
+            响应状态：{responseStatus ?? "completed"}
+            {interviewKitStatus ? `，初面套件：${interviewKitStatus}` : ""}
+          </Typography.Text>
+          {candidate ? <Link to={`/candidates/${candidate.id}`}>查看候选人详情</Link> : null}
+        </Space>
+      }
+    />
+  );
+}
+
 function EvaluationResult({
-  result,
+  response,
   candidate
 }: {
-  result: ResumeEvaluationResponse["result"];
+  response: ResumeEvaluationResponse;
   candidate: Candidate | null;
 }) {
+  const result = response.result;
   return (
     <Alert
       type={result.level === "green" ? "success" : result.level === "red" ? "warning" : "info"}

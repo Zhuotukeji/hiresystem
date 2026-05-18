@@ -11,6 +11,9 @@ services:
       SUB2API_BASE_URL: ${SUB2API_BASE_URL:-https://ai.midongtech.com/v1}
       SUB2API_API_KEY: ${SUB2API_API_KEY:?SUB2API_API_KEY must be set in .env}
       SUB2API_MODEL: ${SUB2API_MODEL:-gpt-5.5}
+      SUB2API_REASONING_EFFORT: ${SUB2API_REASONING_EFFORT:-low}
+      SUB2API_TIMEOUT_MS: ${SUB2API_TIMEOUT_MS:-45000}
+      SUB2API_MAX_RETRIES: ${SUB2API_MAX_RETRIES:-1}
     restart: unless-stopped
     ports:
       - "127.0.0.1:3001:3001"

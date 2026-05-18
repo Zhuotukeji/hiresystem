@@ -43,4 +43,6 @@ docker compose -f docker-compose.prod.yml up -d
 - ECS 安全组只开放 80/443/SSH
 - `.env` 中配置真实 `DATABASE_URL` 和 `SUB2API_*`
 - AI 默认模型为 `gpt-5.5`，生产环境在 `.env` 中配置 `SUB2API_MODEL=gpt-5.5`
-- `/api/health` 会返回 AI 的 baseURL、model 和 API Key 配置状态，便于排查线上环境变量是否生效
+- AI 默认使用 `SUB2API_REASONING_EFFORT=low`，更偏速度；如果网关确认支持，可改成 `none`
+- `/api/health` 会返回 AI 的 baseURL、model、reasoning effort、timeout、retry 和 API Key 配置状态，便于排查线上环境变量是否生效
+- 简历判定通过后，初面套件改为后台生成，避免接口同步等待第二次 AI 调用

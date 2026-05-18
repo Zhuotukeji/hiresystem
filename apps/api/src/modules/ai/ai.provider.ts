@@ -7,6 +7,10 @@ type ChatMessage = {
 
 const DEFAULT_SUB2API_MODEL = "gpt-5.5";
 const PLACEHOLDER_API_KEYS = new Set(["replace-with-server-secret", "<server-secret>", "your-api-key", "your-sub2api-api-key"]);
+const DEFAULT_TIMEOUT_MS = 45_000;
+const DEFAULT_MAX_RETRIES = 1;
+const DEFAULT_REASONING_EFFORT = "low";
+const SUPPORTED_REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
 
 @Injectable()
 export class AiProvider {
@@ -26,7 +30,10 @@ export class AiProvider {
     return {
       baseUrl: this.baseUrl,
       model: this.model,
-      apiKey: this.apiKeyStatus()
+      apiKey: this.apiKeyStatus(),
+      reasoningEffort: this.reasoningEffort,
+      timeoutMs: this.timeoutMs,
+      maxRetries: this.maxRetries
     };
   }
 
@@ -40,7 +47,7 @@ export class AiProvider {
 
     let response: Response | undefined;
     let lastNetworkError: unknown;
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
+    for (let attempt = 1; attempt <= this.maxRetries; attempt += 1) {
       try {
         response = await fetch(`${this.baseUrl}/chat/completions`, {
           method: "POST",
@@ -52,21 +59,22 @@ export class AiProvider {
             model: this.model,
             messages,
             temperature: 0.2,
+            reasoning_effort: this.reasoningEffort,
             response_format: { type: "json_object" }
           }),
-          signal: AbortSignal.timeout(70_000)
+          signal: AbortSignal.timeout(this.timeoutMs)
         });
 
-        if (response.status >= 500 && attempt < 3) {
+        if (response.status >= 500 && attempt < this.maxRetries) {
           await response.text().catch(() => "");
-          await this.sleep(attempt * 800);
+          await this.sleep(attempt * 500);
           continue;
         }
         break;
       } catch (error) {
         lastNetworkError = error;
-        if (attempt < 3) {
-          await this.sleep(attempt * 800);
+        if (attempt < this.maxRetries) {
+          await this.sleep(attempt * 500);
           continue;
         }
       }
@@ -132,6 +140,28 @@ export class AiProvider {
     if (!apiKey) return "missing";
     if (PLACEHOLDER_API_KEYS.has(apiKey) || /^replace-|^change-|^your-/i.test(apiKey)) return "placeholder";
     return "configured";
+  }
+
+  private get timeoutMs() {
+    return this.readNumberEnv("SUB2API_TIMEOUT_MS", DEFAULT_TIMEOUT_MS, 10_000, 120_000);
+  }
+
+  private get maxRetries() {
+    return this.readNumberEnv("SUB2API_MAX_RETRIES", DEFAULT_MAX_RETRIES, 1, 3);
+  }
+
+  private get reasoningEffort() {
+    const raw = process.env.SUB2API_REASONING_EFFORT?.trim().toLowerCase();
+    if (!raw) return DEFAULT_REASONING_EFFORT;
+    return SUPPORTED_REASONING_EFFORTS.has(raw) ? raw : DEFAULT_REASONING_EFFORT;
+  }
+
+  private readNumberEnv(name: string, fallback: number, min: number, max: number) {
+    const raw = process.env[name];
+    if (!raw) return fallback;
+    const value = Number.parseInt(raw, 10);
+    if (Number.isNaN(value)) return fallback;
+    return Math.min(max, Math.max(min, value));
   }
 
   private sleep(ms: number) {

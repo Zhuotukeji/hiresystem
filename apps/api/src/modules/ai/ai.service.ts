@@ -289,13 +289,14 @@ export class AiService {
           where: { id: candidate.id },
           data: { status: "IN_PROCESS" }
         });
-        await this.tryGenerateInitialInterviewKit(application.id, userId);
+        this.generateInitialInterviewKitInBackground(application.id, userId);
       }
 
       return {
         evaluation_id: evaluation.id,
         status: "completed",
-        result
+        result,
+        interview_kit_status: result.level === "green" ? "queued" : "not_required"
       };
     } catch (error) {
       await this.failTask(task.id, error);
@@ -545,6 +546,10 @@ export class AiService {
     } catch {
       // The evaluation is still useful if follow-up kit generation fails; the failed AI task keeps the error.
     }
+  }
+
+  private generateInitialInterviewKitInBackground(applicationId: string, userId?: string) {
+    void this.tryGenerateInitialInterviewKit(applicationId, userId);
   }
 
   private createTask(taskType: AiTaskType, inputSnapshot: unknown, createdBy?: string) {

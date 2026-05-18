@@ -38,6 +38,9 @@ JWT_SECRET=<strong-random-secret>
 SUB2API_BASE_URL=https://ai.midongtech.com/v1
 SUB2API_API_KEY=<server-secret>
 SUB2API_MODEL=gpt-5.5
+SUB2API_REASONING_EFFORT=low
+SUB2API_TIMEOUT_MS=45000
+SUB2API_MAX_RETRIES=1
 ```
 
 不要把 `.env` 提交到 GitHub。
@@ -57,6 +60,8 @@ grep -n '^SUB2API_' .env
 docker compose -f docker-compose.prod.yml exec api sh -lc 'echo "model=$SUB2API_MODEL"; test -n "$SUB2API_API_KEY" && echo "api_key=configured" || echo "api_key=missing"'
 curl http://127.0.0.1:3001/api/health
 ```
+
+`/api/health` 会显示当前 AI 模型、reasoning effort、超时时间和重试次数。默认 `SUB2API_REASONING_EFFORT=low`，也就是更偏速度的模式；如果网关确认支持更快的 `none`，可改成 `SUB2API_REASONING_EFFORT=none`。线上如果想更快失败，降低 `SUB2API_TIMEOUT_MS`；如果想提高弱网成功率，把 `SUB2API_MAX_RETRIES` 调到 `2`，但失败请求会更慢。
 
 修改 `.env` 后需要重建/重启 API 容器让新密钥生效：
 

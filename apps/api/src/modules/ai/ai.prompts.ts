@@ -36,9 +36,10 @@ export const resumeParsePrompt = `
   "sourceChannel": "简历来源，无法判断则为空",
   "tags": ["可用于搜索和筛选的标签"],
   "aiSummary": "用 3-5 句话总结候选人背景、核心经验和明显风险",
-  "resumeText": "清洗后的完整简历文本"
+  "resumeText": ""
 }
 无法识别的字符串字段返回空字符串；yearsOfExperience 无法判断返回 null；tags 不要超过 8 个。
+resumeText 字段请返回空字符串，不要复述完整简历原文，系统会直接保存上传解析出的原文。
 不要因为年龄、性别、婚育、民族、宗教、健康隐私等不合规因素做评价或打标签。
 `;
 
