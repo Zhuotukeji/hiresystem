@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, ApiList } from "../api/client";
 import { TargetCompany } from "../api/types";
+import { companyTypeLabel } from "../domain/labels";
 import { canDeleteResource } from "../domain/permissions";
 import { useCurrentPermissions } from "../hooks/useCurrentUser";
 import { PageHeader } from "../ui/PageHeader";
@@ -57,7 +58,7 @@ export function CompaniesPage() {
           dataSource={data?.items ?? []}
           columns={[
             { title: "公司", dataIndex: "name" },
-            { title: "类型", dataIndex: "companyType" },
+            { title: "类型", dataIndex: "companyType", render: (value) => companyTypeLabel(value) },
             { title: "行业", dataIndex: "industry" },
             { title: "城市", dataIndex: "city" },
             { title: "评级", dataIndex: "talentQualityLevel", render: (value) => <Tag>{value ?? "未评级"}</Tag> },
@@ -110,7 +111,7 @@ export function CompaniesPage() {
             <Input />
           </Form.Item>
           <Form.Item label="类型" name="companyType">
-            <Input placeholder="competitor / benchmark / similar_stage" />
+            <Input placeholder="竞品公司 / 标杆公司 / 同阶段公司" />
           </Form.Item>
           <Form.Item label="行业" name="industry">
             <Input />

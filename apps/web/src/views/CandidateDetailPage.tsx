@@ -5,6 +5,13 @@ import { useParams } from "react-router-dom";
 import { api, ApiList } from "../api/client";
 import { Candidate, CandidateEvaluation, Job, ResumeEvaluationResponse } from "../api/types";
 import { canStartManualCandidateEvaluation, getCandidatePersistedAiEvaluationState } from "../domain/candidateAi";
+import {
+  aiEvaluationNextActionLabel,
+  candidateStatusLabel,
+  evaluationResponseStatusLabel,
+  recommendationActionLabel
+} from "../domain/labels";
+import { stageLabel } from "../domain/stages";
 import { PageHeader } from "../ui/PageHeader";
 import { ScoreTag } from "../ui/ScoreTag";
 
@@ -58,7 +65,7 @@ export function CandidateDetailPage() {
     },
     onSuccess: (response) => {
       setQueuedEvaluationResponse(response);
-      message.success(response.status === "queued" ? "AI 判断已开始" : `AI 判断已完成：${response.status}`);
+      message.success(response.status === "queued" ? "AI 判断已开始" : `AI 判断已完成：${evaluationResponseStatusLabel(response.status)}`);
       queryClient.invalidateQueries({ queryKey: ["candidate", id] });
     },
     onError: (error) => {
@@ -153,7 +160,7 @@ export function CandidateDetailPage() {
             <Descriptions.Item label="期望薪资">{candidate?.expectedSalary ?? "-"}</Descriptions.Item>
             <Descriptions.Item label="电话">{candidate?.phone ?? "-"}</Descriptions.Item>
             <Descriptions.Item label="邮箱">{candidate?.email ?? "-"}</Descriptions.Item>
-            <Descriptions.Item label="状态">{candidate?.status ?? "-"}</Descriptions.Item>
+            <Descriptions.Item label="状态">{candidateStatusLabel(candidate?.status)}</Descriptions.Item>
           </Descriptions>
         </Card>
         <Card title="最新 AI 判断" style={{ gridColumn: "span 2" }}>
@@ -176,11 +183,17 @@ export function CandidateDetailPage() {
                   {(candidate?.applications ?? []).map((application) => (
                     <Card key={application.id} size="small">
                       <Space>
-                        <Tag>{application.stage}</Tag>
+                        <Tag>{stageLabel(application.stage)}</Tag>
                         <Typography.Text>{application.job?.title}</Typography.Text>
-                        {application.nextAction === "AI_EVALUATION_RUNNING" ? <Tag color="processing">AI判断中</Tag> : null}
-                        {application.nextAction === "AI_EVALUATION_FAILED" ? <Tag color="warning">AI判断失败</Tag> : null}
-                        {application.nextAction === "AI_EVALUATION_COMPLETED" ? <Tag color="success">AI判断完成</Tag> : null}
+                        {application.nextAction === "AI_EVALUATION_RUNNING" ? (
+                          <Tag color="processing">{aiEvaluationNextActionLabel(application.nextAction)}</Tag>
+                        ) : null}
+                        {application.nextAction === "AI_EVALUATION_FAILED" ? (
+                          <Tag color="warning">{aiEvaluationNextActionLabel(application.nextAction)}</Tag>
+                        ) : null}
+                        {application.nextAction === "AI_EVALUATION_COMPLETED" ? (
+                          <Tag color="success">{aiEvaluationNextActionLabel(application.nextAction)}</Tag>
+                        ) : null}
                         <ScoreTag
                           level={application.evaluations?.[0]?.level}
                           score={application.evaluations?.[0]?.matchScore}
@@ -264,12 +277,12 @@ function ManualEvaluationStatusAlert({
       type="success"
       showIcon
       style={{ marginBottom: 16 }}
-      message={`AI判断完成：${response.status}`}
+      message={`AI判断完成：${evaluationResponseStatusLabel(response.status)}`}
       description={
         <Space direction="vertical" size={6}>
           <Space>
             <ScoreTag level={response.result.level} score={response.result.match_score} />
-            <Tag>{response.result.recommendation}</Tag>
+            <Tag>{recommendationActionLabel(response.result.recommendation)}</Tag>
           </Space>
           <Typography.Text>{response.result.summary}</Typography.Text>
           {response.result.suggested_next_step ? (
@@ -307,7 +320,7 @@ function EvaluationSummary({ evaluation }: { evaluation: CandidateEvaluation }) 
     <Space direction="vertical" style={{ width: "100%" }}>
       <Space>
         <ScoreTag level={evaluation.level} score={evaluation.matchScore} />
-        <Tag>{evaluation.recommendation}</Tag>
+        <Tag>{recommendationActionLabel(evaluation.recommendation)}</Tag>
       </Space>
       <Typography.Paragraph>{evaluation.summary}</Typography.Paragraph>
       {evaluation.suggestedNextStep ? (

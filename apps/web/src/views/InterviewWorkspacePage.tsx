@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { Candidate, Interview, InterviewKit, Job } from "../api/types";
+import { interviewStageLabel } from "../domain/labels";
 import { PageHeader } from "../ui/PageHeader";
 
 type Workspace = {
@@ -54,14 +55,14 @@ export function InterviewWorkspacePage() {
     <div className="page">
       <PageHeader
         title="面试官工作台"
-        desc={`${data?.candidate?.name ?? "候选人"} · ${data?.job?.title ?? "目标岗位"} · ${data?.interview?.interviewRound ?? ""}`}
+        desc={`${data?.candidate?.name ?? "候选人"} · ${data?.job?.title ?? "目标岗位"} · ${interviewStageLabel(data?.interview?.interviewRound)}`}
       />
       <div className="grid grid-2">
         <Card loading={isLoading} title="本轮面试套件">
           {kit ? (
             <Space direction="vertical" style={{ width: "100%" }}>
               <Typography.Paragraph>{kit.goal}</Typography.Paragraph>
-              <Tag>{kit.stage}</Tag>
+              <Tag>{interviewStageLabel(kit.stage)}</Tag>
               <QuestionBlock title="必问问题" questions={kit.mustAskQuestions} />
               <QuestionBlock title="简历风险验证" questions={kit.resumeBasedQuestions} />
               <QuestionBlock title="场景/案例题" questions={kit.caseQuestions} />
@@ -69,7 +70,7 @@ export function InterviewWorkspacePage() {
               <SignalBlock title="风险信号" items={kit.badSignals} />
             </Space>
           ) : (
-            <Typography.Text type="secondary">暂无面试套件，请在岗位 pipeline 中生成。</Typography.Text>
+            <Typography.Text type="secondary">暂无面试套件，请在岗位流程看板中生成。</Typography.Text>
           )}
         </Card>
         <Card loading={isLoading} title="阶段流转信息">

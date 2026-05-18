@@ -32,6 +32,12 @@ import {
   hasResumeInput,
   shouldFallbackToResumeParseText
 } from "../domain/candidateAi";
+import {
+  candidateStatusLabel,
+  evaluationResponseStatusLabel,
+  interviewKitStatusLabel,
+  recommendationActionLabel
+} from "../domain/labels";
 import { useCurrentPermissions } from "../hooks/useCurrentUser";
 import { PageHeader } from "../ui/PageHeader";
 import { ScoreTag } from "../ui/ScoreTag";
@@ -180,7 +186,7 @@ export function CandidatesPage() {
       if (evaluation.result) {
         setLatestEvaluation(evaluation);
         setAiEvaluationStatus("completed");
-        message.success(`AI 判断已完成：${evaluation.status}`);
+        message.success(`AI 判断已完成：${evaluationResponseStatusLabel(evaluation.status)}`);
       } else {
         setAiEvaluationStatus("evaluating");
         message.success("AI 判断已开始");
@@ -278,7 +284,7 @@ export function CandidatesPage() {
                 const persistedState = getCandidatePersistedAiEvaluationState(record);
                 if (persistedState.status === "evaluating") return <Tag color="processing">AI判断中...</Tag>;
                 if (persistedState.status === "failed") return <Tag color="warning">AI判断失败</Tag>;
-                return record.status;
+                return candidateStatusLabel(record.status);
               }
             },
             {
@@ -547,8 +553,8 @@ function AiEvaluationStatusAlert({
       description={
         <Space direction="vertical" size={4}>
           <Typography.Text>
-            响应状态：{responseStatus ?? "completed"}
-            {interviewKitStatus ? `，初面套件：${interviewKitStatus}` : ""}
+            响应状态：{evaluationResponseStatusLabel(responseStatus ?? "completed")}
+            {interviewKitStatus ? `，初面套件：${interviewKitStatusLabel(interviewKitStatus)}` : ""}
           </Typography.Text>
           {candidate ? <Link to={`/candidates/${candidate.id}`}>查看候选人详情</Link> : null}
         </Space>
@@ -581,6 +587,7 @@ function EvaluationResult({
       description={
         <Space direction="vertical" size={6}>
           <Typography.Text>{result.summary}</Typography.Text>
+          <Typography.Text>AI 建议：{recommendationActionLabel(result.recommendation)}</Typography.Text>
           {result.suggested_next_step ? <Typography.Text>建议下一步：{result.suggested_next_step}</Typography.Text> : null}
           {result.risks?.length ? <Typography.Text type="warning">风险点：{result.risks.join("；")}</Typography.Text> : null}
           {result.questions_to_confirm?.length ? (

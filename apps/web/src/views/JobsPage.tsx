@@ -7,6 +7,7 @@ import { Job } from "../api/types";
 import { AiJdAssistant } from "../components/AiJdAssistant";
 import { buildDraftJobPayload, validateAiJdInput } from "../domain/aiJob";
 import { getJobCreationConfirmCopy, JobCreationMode } from "../domain/jobCreation";
+import { jobStatusLabel } from "../domain/labels";
 import { canDeleteResource } from "../domain/permissions";
 import { useCurrentPermissions } from "../hooks/useCurrentUser";
 import { PageHeader } from "../ui/PageHeader";
@@ -93,7 +94,7 @@ export function JobsPage() {
             { title: "部门", dataIndex: "department" },
             { title: "城市", dataIndex: "city" },
             { title: "优先级", dataIndex: "priority", render: (value) => <Tag color={value === "P0" ? "red" : "blue"}>{value}</Tag> },
-            { title: "状态", dataIndex: "status" },
+            { title: "状态", dataIndex: "status", render: (value) => jobStatusLabel(value) },
             { title: "HC", dataIndex: "headcount" },
             { title: "候选人", render: (_, record) => record._count?.applications ?? 0 },
             { title: "画像", render: (_, record) => (record.profile ? <Tag color="success">已配置</Tag> : <Tag>待配置</Tag>) },

@@ -1,6 +1,7 @@
 import { Card, Col, Row, Statistic, Table, Tag } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
+import { stageLabel } from "../domain/stages";
 import { PageHeader } from "../ui/PageHeader";
 
 type DashboardStats = {
@@ -55,7 +56,7 @@ export function DashboardPage() {
           dataSource={data?.applicationsByStage ?? []}
           pagination={false}
           columns={[
-            { title: "阶段", dataIndex: "stage", render: (stage) => <Tag>{stage}</Tag> },
+            { title: "阶段", dataIndex: "stage", render: (stage) => <Tag>{stageLabel(stage)}</Tag> },
             { title: "人数", dataIndex: "count" }
           ]}
         />

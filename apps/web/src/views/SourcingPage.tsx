@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiList } from "../api/client";
 import { Candidate, Job, TargetCompany } from "../api/types";
+import { candidateStatusLabel, companyTypeLabel } from "../domain/labels";
 import { PageHeader } from "../ui/PageHeader";
 import { ScoreTag } from "../ui/ScoreTag";
 
@@ -139,7 +140,7 @@ export function SourcingPage() {
             dataSource={recommendedCompanies}
             columns={[
               { title: "公司", dataIndex: "name" },
-              { title: "类型", dataIndex: "companyType" },
+              { title: "类型", dataIndex: "companyType", render: (value) => companyTypeLabel(value) },
               { title: "评级", dataIndex: "talentQualityLevel", render: (value) => <Tag>{value ?? "未评级"}</Tag> },
               { title: "候选人", render: (_, record) => record._count?.candidates ?? 0 },
               {
@@ -167,7 +168,7 @@ export function SourcingPage() {
               { title: "公司", dataIndex: "currentCompanyName" },
               { title: "职位", dataIndex: "currentTitle" },
               { title: "来源", dataIndex: "sourceChannel", render: (value) => value ?? "-" },
-              { title: "状态", dataIndex: "status" },
+              { title: "状态", dataIndex: "status", render: (value) => candidateStatusLabel(value) },
               {
                 title: "最新判断",
                 render: (_, record) => {

@@ -17,6 +17,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { Application, Job } from "../api/types";
 import { AiJdAssistant } from "../components/AiJdAssistant";
+import { jobStatusLabel } from "../domain/labels";
 import { pipelineStages, stageLabel, stageToKitStage } from "../domain/stages";
 import { PageHeader } from "../ui/PageHeader";
 import { ScoreTag } from "../ui/ScoreTag";
@@ -42,7 +43,7 @@ export function JobDetailPage() {
               <Card loading={isLoading}>
                 <Descriptions column={2}>
                   <Descriptions.Item label="优先级">{job?.priority}</Descriptions.Item>
-                  <Descriptions.Item label="状态">{job?.status}</Descriptions.Item>
+                  <Descriptions.Item label="状态">{jobStatusLabel(job?.status)}</Descriptions.Item>
                   <Descriptions.Item label="HC">{job?.headcount}</Descriptions.Item>
                   <Descriptions.Item label="薪资">
                     {job?.salaryMin || job?.salaryMax ? `${job?.salaryMin ?? "-"}-${job?.salaryMax ?? "-"}` : "-"}
