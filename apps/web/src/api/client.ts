@@ -47,6 +47,8 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
+  const clientRequestId = headers.get("x-request-id") ?? createRequestId();
+  headers.set("x-request-id", clientRequestId);
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
@@ -60,7 +62,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   }
 
   if (!response.ok) {
-    const requestId = response.headers.get("x-request-id") ?? undefined;
+    const requestId = response.headers.get("x-request-id") ?? clientRequestId;
     const error = await response.json().catch(() => ({ message: response.statusText })) as ApiErrorPayload;
     const message = formatApiErrorMessage(error, requestId);
     console.error("API request failed", {
@@ -128,4 +130,11 @@ function compactDetails(details: unknown) {
   } catch {
     return String(details).slice(0, 500);
   }
+}
+
+function createRequestId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `web-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }

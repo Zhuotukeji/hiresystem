@@ -17,7 +17,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
 import { Application, Interview, InterviewKit, Job } from "../api/types";
 import { AiJdAssistant } from "../components/AiJdAssistant";
 import { interviewStageLabel, interviewStatusLabel, jobStatusLabel } from "../domain/labels";
@@ -202,7 +202,7 @@ function Pipeline({ applications, jobId }: { applications: Application[]; jobId:
       message.success("面试套件已生成");
       queryClient.invalidateQueries({ queryKey: ["job", jobId] });
     },
-    onError: (error) => message.error(error instanceof Error ? error.message : "生成失败")
+    onError: (error) => showInterviewKitError(error)
   });
   const createInterview = useMutation({
     mutationFn: ({ id, stage }: { id: string; stage: string }) => api.post<{ id: string }>("/interviews", { applicationId: id, interviewRound: stage }),
@@ -283,6 +283,39 @@ function Pipeline({ applications, jobId }: { applications: Application[]; jobId:
       />
     </>
   );
+}
+
+function showInterviewKitError(error: unknown) {
+  const title = "面试套件生成失败";
+  const messageText = error instanceof Error ? error.message : "生成失败";
+  const requestId = error instanceof ApiError ? error.requestId : undefined;
+  const details = error instanceof ApiError ? compactErrorDetails(error.details) : "";
+
+  console.error(title, error);
+  Modal.error({
+    title,
+    width: 720,
+    content: (
+      <Space direction="vertical" style={{ width: "100%" }}>
+        <Typography.Text>请把下面的信息发给开发排查。</Typography.Text>
+        {requestId ? <Typography.Text copyable>错误ID：{requestId}</Typography.Text> : null}
+        <Typography.Paragraph copyable style={{ whiteSpace: "pre-wrap", maxHeight: 260, overflow: "auto" }}>
+          {messageText}
+          {details ? `\n\n${details}` : ""}
+        </Typography.Paragraph>
+      </Space>
+    )
+  });
+}
+
+function compactErrorDetails(details: unknown) {
+  if (!details) return "";
+  if (typeof details === "string") return details.slice(0, 1200);
+  try {
+    return JSON.stringify(details, null, 2).slice(0, 1200);
+  } catch {
+    return String(details).slice(0, 1200);
+  }
 }
 
 function InterviewPreparationModal({
