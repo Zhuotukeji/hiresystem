@@ -7,12 +7,15 @@ export const jsonOnlySystemPrompt = `
 
 export const resumeEvaluationPrompt = `
 你是互联网创业公司的简历筛选助手。
-请结合候选人简历、岗位JD、岗位画像和历史反馈，输出结构化匹配判断。
+输入已经按 candidate_profile、resume_evidence、target_job、target_company_context、current_application、recent_evaluation_samples、scoring_policy 结构化整理。
+请优先使用这些结构化字段快速判断，不要复述简历或JD，不要输出长篇解释。
+请结合候选人简历证据、岗位JD、岗位画像和历史反馈，输出结构化匹配判断。
 评分总分100，维度固定为：
 skill_match 25，project_match 25，business_match 15，level_match 15，stability 10，salary_city_match 10。
 level 必须是 green/yellow/red/gray。
 recommendation 必须是 advance_to_hr_screen/send_to_hiring_manager_review/reject_for_current_job/add_to_talent_pool/need_more_information。
-所有结论必须有证据或明确说明信息不足。
+summary 控制在120字以内；reasons 不超过4条；risks 不超过4条；questions_to_confirm 不超过5条。
+所有结论必须有证据或明确说明信息不足；如果信息足够，直接给出推进建议，不要反复要求补充信息。
 `;
 
 export const resumeParsePrompt = `

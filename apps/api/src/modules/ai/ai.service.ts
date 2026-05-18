@@ -27,6 +27,7 @@ import {
   resumeParsePrompt,
   stageHandoffPrompt
 } from "./ai.prompts";
+import { buildResumeEvaluationInput, getResumeEvaluationInputMetrics } from "./resume-evaluation-input";
 import { ResumeUploadFile, extractResumeText } from "./resume-extractor";
 
 @Injectable()
@@ -249,25 +250,13 @@ export class AiService {
           });
     if (!application) throw new NotFoundException("Application not found");
 
-    const inputSnapshot = {
-      candidate: {
-        id: candidate.id,
-        name: candidate.name,
-        resume_text: candidate.resumeText,
-        current_company: candidate.currentCompanyName,
-        current_title: candidate.currentTitle,
-        years_of_experience: candidate.yearsOfExperience,
-        city: candidate.city,
-        expected_salary: candidate.expectedSalary,
-        tags: candidate.tags
-      },
-      target_company_info: candidate.currentCompany,
-      job,
-      job_profile: job.profile,
-      historical_samples: candidate.evaluations
-    };
+    const inputSnapshot = buildResumeEvaluationInput({ candidate, job, application });
+    const inputMetrics = getResumeEvaluationInputMetrics(inputSnapshot);
 
     const task = await this.createTask(AiTaskType.RESUME_EVALUATION, inputSnapshot, userId);
+    this.logger.log(
+      `AI resume evaluation started task=${task.id} candidate=${candidate.id} job=${job.id} inputChars=${inputMetrics.totalChars} resumeChars=${inputMetrics.resumeChars} jdChars=${inputMetrics.jdChars}`
+    );
 
     try {
       const response = await this.aiProvider.completeJson([
