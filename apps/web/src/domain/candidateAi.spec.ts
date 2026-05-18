@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canSubmitAiCandidate, getCandidateAiSubmitBlocker, hasResumeInput } from "./candidateAi";
+import { canStartManualCandidateEvaluation, canSubmitAiCandidate, getCandidateAiSubmitBlocker, hasResumeInput } from "./candidateAi";
 
 describe("candidate AI helpers", () => {
   it("detects whether resume input is available", () => {
@@ -19,5 +19,11 @@ describe("candidate AI helpers", () => {
     expect(getCandidateAiSubmitBlocker({ jobId: "job-1", resumeParsed: false })).toBe("请先识别简历并确认候选人信息");
     expect(getCandidateAiSubmitBlocker({ jobId: "job-1", resumeParsed: true, name: "" })).toBe("请补充候选人姓名");
     expect(getCandidateAiSubmitBlocker({ jobId: "job-1", resumeParsed: true, name: "张三" })).toBe("");
+  });
+
+  it("requires an explicit job selection before manual detail-page evaluation", () => {
+    expect(canStartManualCandidateEvaluation("job-1", false)).toBe(true);
+    expect(canStartManualCandidateEvaluation("", false)).toBe(false);
+    expect(canStartManualCandidateEvaluation("job-1", true)).toBe(false);
   });
 });

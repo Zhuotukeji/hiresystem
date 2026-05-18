@@ -12,3 +12,7 @@ export function getCandidateAiSubmitBlocker(params: { jobId?: string; name?: str
   if (!params.name?.trim()) return "请补充候选人姓名";
   return "";
 }
+
+export function canStartManualCandidateEvaluation(jobId?: string, isEvaluating = false) {
+  return Boolean(jobId?.trim()) && !isEvaluating;
+}

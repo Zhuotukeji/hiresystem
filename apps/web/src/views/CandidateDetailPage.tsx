@@ -1,9 +1,10 @@
-import { Button, Card, Descriptions, Form, Modal, Select, Space, Tabs, Tag, Typography, message } from "antd";
+import { Alert, Button, Card, Descriptions, Modal, Select, Space, Tabs, Tag, Typography, message } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, ApiList } from "../api/client";
-import { Candidate, CandidateEvaluation, Job } from "../api/types";
+import { Candidate, CandidateEvaluation, Job, ResumeEvaluationResponse } from "../api/types";
+import { canStartManualCandidateEvaluation } from "../domain/candidateAi";
 import { PageHeader } from "../ui/PageHeader";
 import { ScoreTag } from "../ui/ScoreTag";
 
@@ -11,6 +12,7 @@ export function CandidateDetailPage() {
   const { id } = useParams();
   const [jobModalOpen, setJobModalOpen] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string>();
+  const [evaluationJobId, setEvaluationJobId] = useState<string>();
   const queryClient = useQueryClient();
 
   const { data: candidate, isLoading } = useQuery({
@@ -39,13 +41,15 @@ export function CandidateDetailPage() {
   });
 
   const evaluateMutation = useMutation({
-    mutationFn: (jobId: string) => api.post("/ai/resume-evaluations", { candidateId: id, jobId }),
-    onSuccess: () => {
-      message.success("AI 简历判定已完成");
+    mutationFn: (jobId: string) => api.post<ResumeEvaluationResponse>("/ai/resume-evaluations", { candidateId: id, jobId }),
+    onSuccess: (response) => {
+      message.success(`AI 判断已完成：${response.status}`);
       queryClient.invalidateQueries({ queryKey: ["candidate", id] });
     },
     onError: (error) => message.error(error instanceof Error ? error.message : "AI 判定失败")
   });
+
+  const canStartEvaluation = canStartManualCandidateEvaluation(evaluationJobId, evaluateMutation.isPending);
 
   return (
     <div className="page">
@@ -56,14 +60,40 @@ export function CandidateDetailPage() {
           <Space>
             <Button onClick={() => setJobModalOpen(true)}>加入岗位</Button>
             <Select
-              placeholder="选择岗位后AI判定"
+              placeholder="选择目标岗位"
               options={jobOptions}
               style={{ width: 260 }}
-              onChange={(value) => evaluateMutation.mutate(value)}
+              value={evaluationJobId}
+              disabled={evaluateMutation.isPending}
+              onChange={(value) => {
+                setEvaluationJobId(value);
+                evaluateMutation.reset();
+              }}
               loading={evaluateMutation.isPending}
             />
+            <Button
+              type="primary"
+              disabled={!canStartEvaluation}
+              loading={evaluateMutation.isPending}
+              onClick={() => evaluationJobId && evaluateMutation.mutate(evaluationJobId)}
+            >
+              开启 AI 判断
+            </Button>
           </Space>
         }
+      />
+      {!isLoading && !candidate?.resumeText ? (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="该候选人暂无简历文本，AI 判断可能不充分"
+        />
+      ) : null}
+      <ManualEvaluationStatusAlert
+        isPending={evaluateMutation.isPending}
+        response={evaluateMutation.data}
+        error={evaluateMutation.error}
       />
       <div className="grid grid-3">
         <Card loading={isLoading} title="基础信息">
@@ -137,6 +167,67 @@ export function CandidateDetailPage() {
   );
 }
 
+function ManualEvaluationStatusAlert({
+  isPending,
+  response,
+  error
+}: {
+  isPending: boolean;
+  response?: ResumeEvaluationResponse;
+  error: Error | null;
+}) {
+  if (isPending) {
+    return (
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="AI判断中..."
+        description="系统正在基于候选人简历和目标岗位判断是否进入下一阶段。"
+      />
+    );
+  }
+
+  if (error) {
+    return (
+      <Alert
+        type="warning"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="AI判断失败"
+        description={error.message}
+      />
+    );
+  }
+
+  if (!response) return null;
+
+  return (
+    <Alert
+      type="success"
+      showIcon
+      style={{ marginBottom: 16 }}
+      message={`AI判断完成：${response.status}`}
+      description={
+        <Space direction="vertical" size={6}>
+          <Space>
+            <ScoreTag level={response.result.level} score={response.result.match_score} />
+            <Tag>{response.result.recommendation}</Tag>
+          </Space>
+          <Typography.Text>{response.result.summary}</Typography.Text>
+          {response.result.suggested_next_step ? (
+            <Typography.Text>推荐下一步：{response.result.suggested_next_step}</Typography.Text>
+          ) : null}
+          {response.result.risks?.length ? <Typography.Text type="warning">风险点：{response.result.risks.join("；")}</Typography.Text> : null}
+          {response.result.questions_to_confirm?.length ? (
+            <Typography.Text type="secondary">电话确认问题：{response.result.questions_to_confirm.join("；")}</Typography.Text>
+          ) : null}
+        </Space>
+      }
+    />
+  );
+}
+
 function EvaluationSummary({ evaluation }: { evaluation: CandidateEvaluation }) {
   return (
     <Space direction="vertical" style={{ width: "100%" }}>
@@ -145,6 +236,12 @@ function EvaluationSummary({ evaluation }: { evaluation: CandidateEvaluation }) 
         <Tag>{evaluation.recommendation}</Tag>
       </Space>
       <Typography.Paragraph>{evaluation.summary}</Typography.Paragraph>
+      {evaluation.suggestedNextStep ? (
+        <div>
+          <Typography.Text strong>推荐下一步</Typography.Text>
+          <Typography.Paragraph>{evaluation.suggestedNextStep}</Typography.Paragraph>
+        </div>
+      ) : null}
       <div>
         <Typography.Text strong>推荐理由</Typography.Text>
         <ul>
