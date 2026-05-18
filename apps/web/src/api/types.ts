@@ -105,6 +105,8 @@ export type Application = {
   source?: string;
   matchScore?: number;
   recommendation?: string;
+  nextAction?: string;
+  nextActionDueAt?: string;
   candidate?: Candidate;
   job?: Job;
   evaluations?: CandidateEvaluation[];

@@ -76,6 +76,40 @@ export function normalizeResumeParsePayload(raw: unknown, resumeText: string) {
   };
 }
 
+export function normalizeResumeEvaluationPayload(raw: unknown) {
+  const payload = asObject(raw);
+  const scoreBreakdown = asObject(payload.score_breakdown ?? payload.scoreBreakdown ?? payload.dimension_scores ?? payload.dimensionScores);
+  const level = normalizeRecommendationLevel(firstText(payload.level, payload.decision, payload.match_level, payload.matchLevel));
+  const recommendation = normalizeRecommendationAction(firstText(payload.recommendation, payload.action, payload.next_step, payload.suggested_next_step), level);
+
+  return {
+    match_score: toNumber(payload.match_score ?? payload.matchScore ?? payload.score ?? payload.total_score),
+    level,
+    recommendation,
+    summary: firstText(payload.summary, payload.conclusion, payload.reason) || "AI已完成简历匹配判断。",
+    score_breakdown: {
+      skill_match: normalizeScoreItem(scoreBreakdown.skill_match ?? scoreBreakdown.skillMatch, 25, "技能匹配"),
+      project_match: normalizeScoreItem(scoreBreakdown.project_match ?? scoreBreakdown.projectMatch, 25, "项目经验匹配"),
+      business_match: normalizeScoreItem(scoreBreakdown.business_match ?? scoreBreakdown.businessMatch, 15, "业务背景匹配"),
+      level_match: normalizeScoreItem(scoreBreakdown.level_match ?? scoreBreakdown.levelMatch, 15, "层级匹配"),
+      stability: normalizeScoreItem(scoreBreakdown.stability, 10, "稳定性"),
+      salary_city_match: normalizeScoreItem(
+        scoreBreakdown.salary_city_match ?? scoreBreakdown.salaryCityMatch ?? scoreBreakdown.salary_match ?? scoreBreakdown.city_match,
+        10,
+        "薪资和城市匹配"
+      )
+    },
+    reasons: toStringArray(payload.reasons ?? payload.reason_list ?? payload.strengths).slice(0, 4),
+    risks: toStringArray(payload.risks ?? payload.risk_points ?? payload.concerns).slice(0, 4),
+    questions_to_confirm: toStringArray(
+      payload.questions_to_confirm ?? payload.questionsToConfirm ?? payload.confirm_questions ?? payload.questions
+    ).slice(0, 5),
+    evidence: normalizeEvidence(payload.evidence),
+    missing_information: toStringArray(payload.missing_information ?? payload.missingInformation ?? payload.missing).slice(0, 5),
+    suggested_next_step: firstText(payload.suggested_next_step, payload.suggestedNextStep, payload.next_step)
+  };
+}
+
 function asObject(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : {};
 }
@@ -98,4 +132,65 @@ function toStringArray(value: unknown): string[] {
       .filter(Boolean);
   }
   return [];
+}
+
+function normalizeRecommendationLevel(value: string) {
+  const text = value.toLowerCase();
+  if (["green", "yellow", "red", "gray"].includes(text)) return text;
+  if (/强烈|推进|通过|匹配|建议进入|advance|pass|hire/.test(value)) return "green";
+  if (/快审|待确认|有潜力|部分|一般|review|maybe/.test(value)) return "yellow";
+  if (/拒绝|不匹配|淘汰|reject|no/.test(value)) return "red";
+  return "gray";
+}
+
+function normalizeRecommendationAction(value: string, level: string) {
+  const text = value.toLowerCase();
+  if (["advance_to_hr_screen", "send_to_hiring_manager_review", "reject_for_current_job", "add_to_talent_pool", "need_more_information"].includes(text)) {
+    return text;
+  }
+  if (/用人|经理|快审|manager/.test(value)) return "send_to_hiring_manager_review";
+  if (/拒绝|不匹配|淘汰|reject/.test(value)) return "reject_for_current_job";
+  if (/人才库|人才池|talent/.test(value)) return "add_to_talent_pool";
+  if (/补充|更多信息|确认|information|missing/.test(value)) return "need_more_information";
+  if (level === "green") return "advance_to_hr_screen";
+  if (level === "yellow") return "send_to_hiring_manager_review";
+  if (level === "red") return "reject_for_current_job";
+  return "need_more_information";
+}
+
+function normalizeScoreItem(value: unknown, maxScore: number, fallbackReason: string) {
+  const item = asObject(value);
+  const score = clampNumber(toNumber(item.score ?? item.value ?? value), 0, maxScore);
+  return {
+    score,
+    max_score: toNumber(item.max_score ?? item.maxScore) || maxScore,
+    reason: firstText(item.reason, item.comment) || fallbackReason
+  };
+}
+
+function normalizeEvidence(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      const object = asObject(item);
+      return {
+        type: firstText(object.type, object.category) || "resume",
+        text: firstText(object.text, object.content, item)
+      };
+    })
+    .filter((item) => item.text)
+    .slice(0, 5);
+}
+
+function toNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const match = value.match(/\d+(?:\.\d+)?/);
+    if (match) return Number.parseFloat(match[0]);
+  }
+  return 0;
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }

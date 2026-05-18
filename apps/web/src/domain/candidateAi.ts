@@ -17,6 +17,39 @@ export function canStartManualCandidateEvaluation(jobId?: string, isEvaluating =
   return Boolean(jobId?.trim()) && !isEvaluating;
 }
 
+export const AI_EVALUATION_RUNNING = "AI_EVALUATION_RUNNING";
+export const AI_EVALUATION_COMPLETED = "AI_EVALUATION_COMPLETED";
+export const AI_EVALUATION_FAILED = "AI_EVALUATION_FAILED";
+
+export type CandidateAiApplicationState = {
+  nextAction?: string;
+  job?: { title?: string };
+  evaluations?: Array<{ id?: string }>;
+};
+
+export function isApplicationAiEvaluationRunning(application?: CandidateAiApplicationState) {
+  return application?.nextAction === AI_EVALUATION_RUNNING;
+}
+
+export function isApplicationAiEvaluationFailed(application?: CandidateAiApplicationState) {
+  return application?.nextAction === AI_EVALUATION_FAILED;
+}
+
+export function getCandidatePersistedAiEvaluationState(candidate?: { applications?: CandidateAiApplicationState[] }) {
+  const applications = candidate?.applications ?? [];
+  const runningApplication = applications.find(isApplicationAiEvaluationRunning);
+  if (runningApplication) {
+    return { status: "evaluating" as const, application: runningApplication };
+  }
+
+  const failedApplication = applications.find(isApplicationAiEvaluationFailed);
+  if (failedApplication) {
+    return { status: "failed" as const, application: failedApplication };
+  }
+
+  return { status: "idle" as const, application: undefined };
+}
+
 export function isResumeParseRouteMissingError(message: string) {
   return /Cannot POST .*resume-parse/i.test(message) || /resume-parse.*Not Found/i.test(message);
 }

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, ApiList } from "../api/client";
 import { Candidate, CandidateEvaluation, Job, ResumeEvaluationResponse } from "../api/types";
-import { canStartManualCandidateEvaluation } from "../domain/candidateAi";
+import { canStartManualCandidateEvaluation, getCandidatePersistedAiEvaluationState } from "../domain/candidateAi";
 import { PageHeader } from "../ui/PageHeader";
 import { ScoreTag } from "../ui/ScoreTag";
 
@@ -31,6 +31,9 @@ export function CandidateDetailPage() {
   });
 
   const latestEvaluation = candidate?.evaluations?.[0];
+  const persistedAiEvaluationState = useMemo(() => getCandidatePersistedAiEvaluationState(candidate), [candidate]);
+  const runningEvaluationApplication = persistedAiEvaluationState.status === "evaluating" ? persistedAiEvaluationState.application : undefined;
+  const failedEvaluationApplication = persistedAiEvaluationState.status === "failed" ? persistedAiEvaluationState.application : undefined;
   const jobOptions = useMemo(
     () => (jobs?.items ?? []).map((job) => ({ value: job.id, label: `${job.title} · ${job.city ?? "不限城市"}` })),
     [jobs]
@@ -66,6 +69,21 @@ export function CandidateDetailPage() {
   });
 
   const canStartEvaluation = canStartManualCandidateEvaluation(evaluationJobId, evaluationStatus === "evaluating" || evaluateMutation.isPending);
+
+  useEffect(() => {
+    if (runningEvaluationApplication && evaluationStatus !== "evaluating") {
+      setEvaluationBaselineId(runningEvaluationApplication.evaluations?.[0]?.id ?? latestEvaluation?.id);
+      setQueuedEvaluationResponse(undefined);
+      setEvaluationError("");
+      setEvaluationStatus("evaluating");
+      return;
+    }
+
+    if (failedEvaluationApplication && evaluationStatus === "evaluating") {
+      setEvaluationStatus("failed");
+      setEvaluationError(`上次 AI 判断失败：${failedEvaluationApplication.job?.title ?? "未知岗位"}，可重新开启判断。`);
+    }
+  }, [evaluationStatus, failedEvaluationApplication, latestEvaluation?.id, runningEvaluationApplication]);
 
   useEffect(() => {
     if (evaluationStatus !== "evaluating") return;
@@ -124,6 +142,8 @@ export function CandidateDetailPage() {
         status={evaluationStatus}
         response={queuedEvaluationResponse}
         error={evaluationError}
+        runningJobTitle={runningEvaluationApplication?.job?.title}
+        failedJobTitle={failedEvaluationApplication?.job?.title}
       />
       <div className="grid grid-3">
         <Card loading={isLoading} title="基础信息">
@@ -158,6 +178,9 @@ export function CandidateDetailPage() {
                       <Space>
                         <Tag>{application.stage}</Tag>
                         <Typography.Text>{application.job?.title}</Typography.Text>
+                        {application.nextAction === "AI_EVALUATION_RUNNING" ? <Tag color="processing">AI判断中</Tag> : null}
+                        {application.nextAction === "AI_EVALUATION_FAILED" ? <Tag color="warning">AI判断失败</Tag> : null}
+                        {application.nextAction === "AI_EVALUATION_COMPLETED" ? <Tag color="success">AI判断完成</Tag> : null}
                         <ScoreTag
                           level={application.evaluations?.[0]?.level}
                           score={application.evaluations?.[0]?.matchScore}
@@ -200,11 +223,15 @@ export function CandidateDetailPage() {
 function ManualEvaluationStatusAlert({
   status,
   response,
-  error
+  error,
+  runningJobTitle,
+  failedJobTitle
 }: {
   status: "idle" | "evaluating" | "completed" | "failed";
   response?: ResumeEvaluationResponse;
   error: string;
+  runningJobTitle?: string;
+  failedJobTitle?: string;
 }) {
   if (status === "evaluating") {
     return (
@@ -213,7 +240,7 @@ function ManualEvaluationStatusAlert({
         showIcon
         style={{ marginBottom: 16 }}
         message="AI判断中..."
-        description="系统正在基于候选人简历和目标岗位判断是否进入下一阶段。"
+        description={`系统正在基于候选人简历和目标岗位${runningJobTitle ? `「${runningJobTitle}」` : ""}判断是否进入下一阶段。离开页面后该状态会继续保留。`}
       />
     );
   }
@@ -225,7 +252,7 @@ function ManualEvaluationStatusAlert({
         showIcon
         style={{ marginBottom: 16 }}
         message="AI判断失败"
-        description={error || "候选人资料未受影响，可重新开启 AI 判断。"}
+        description={error || `岗位${failedJobTitle ? `「${failedJobTitle}」` : ""}的 AI 判断没有完成，候选人资料未受影响，可重新开启 AI 判断。`}
       />
     );
   }

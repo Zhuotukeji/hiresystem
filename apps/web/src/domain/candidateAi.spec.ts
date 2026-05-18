@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canStartManualCandidateEvaluation,
   canSubmitAiCandidate,
+  getCandidatePersistedAiEvaluationState,
   getCandidateAiSubmitBlocker,
   getResumeParseErrorMessage,
   hasResumeInput,
@@ -33,6 +34,20 @@ describe("candidate AI helpers", () => {
     expect(canStartManualCandidateEvaluation("job-1", false)).toBe(true);
     expect(canStartManualCandidateEvaluation("", false)).toBe(false);
     expect(canStartManualCandidateEvaluation("job-1", true)).toBe(false);
+  });
+
+  it("restores persisted AI evaluation state from application next action", () => {
+    expect(
+      getCandidatePersistedAiEvaluationState({
+        applications: [{ nextAction: "AI_EVALUATION_RUNNING", job: { title: "HRBP" } }]
+      })
+    ).toEqual({ status: "evaluating", application: { nextAction: "AI_EVALUATION_RUNNING", job: { title: "HRBP" } } });
+
+    expect(
+      getCandidatePersistedAiEvaluationState({
+        applications: [{ nextAction: "AI_EVALUATION_FAILED", job: { title: "后端工程师" } }]
+      }).status
+    ).toBe("failed");
   });
 
   it("detects stale API resume parse route errors", () => {

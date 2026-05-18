@@ -16,7 +16,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateJdSessionDto, OverrideEvaluationDto, ResumeEvaluationDto, ResumeParseDto, SendJdMessageDto } from "./ai.dto";
 import { buildJdRoleCorrectionPrompt, validateJdRoleConsistency } from "./jd-role-consistency";
-import { normalizeJdAssistantPayload, normalizeResumeParsePayload } from "./ai.normalizers";
+import { normalizeJdAssistantPayload, normalizeResumeEvaluationPayload, normalizeResumeParsePayload } from "./ai.normalizers";
 import { AiProvider } from "./ai.provider";
 import {
   interviewKitPrompt,
@@ -30,6 +30,10 @@ import {
 import { buildResumeEvaluationInput, getResumeEvaluationInputMetrics } from "./resume-evaluation-input";
 import { ResumeUploadFile, extractResumeText } from "./resume-extractor";
 import { parseResumeLocally } from "./local-resume-parser";
+
+const AI_EVALUATION_RUNNING = "AI_EVALUATION_RUNNING";
+const AI_EVALUATION_COMPLETED = "AI_EVALUATION_COMPLETED";
+const AI_EVALUATION_FAILED = "AI_EVALUATION_FAILED";
 
 @Injectable()
 export class AiService {
@@ -284,20 +288,34 @@ export class AiService {
     const inputSnapshot = buildResumeEvaluationInput({ candidate, job, application });
     const inputMetrics = getResumeEvaluationInputMetrics(inputSnapshot);
 
+    await this.prisma.application.update({
+      where: { id: application.id },
+      data: { nextAction: AI_EVALUATION_RUNNING }
+    });
+
     const task = await this.createTask(AiTaskType.RESUME_EVALUATION, inputSnapshot, userId);
     this.logger.log(
       `AI resume evaluation started task=${task.id} candidate=${candidate.id} job=${job.id} inputChars=${inputMetrics.totalChars} resumeChars=${inputMetrics.resumeChars} jdChars=${inputMetrics.jdChars}`
     );
 
     try {
-      const response = await this.aiProvider.completeJson(
-        [
-          { role: "system", content: `${jsonOnlySystemPrompt}\n${resumeEvaluationPrompt}` },
-          { role: "user", content: JSON.stringify(inputSnapshot) }
-        ],
-        { temperature: 0, maxCompletionTokens: 900 }
-      );
-      const result = this.compactResumeEvaluationResult(resumeEvaluationResultSchema.parse(response.data));
+      let response;
+      let result: ResumeEvaluationResult;
+      try {
+        response = await this.aiProvider.completeJson(this.resumeEvaluationMessages(inputSnapshot), {
+          temperature: 0,
+          maxCompletionTokens: 1800
+        });
+        result = this.parseResumeEvaluationResult(response.data);
+      } catch (error) {
+        this.logger.warn(`AI resume evaluation output needs retry task=${task.id}: ${error instanceof Error ? error.message : String(error)}`);
+        response = await this.aiProvider.completeJson(
+          this.resumeEvaluationMessages(inputSnapshot, "上一轮输出不是系统要求的JSON结构。请只输出合法JSON，并严格使用 match_score、level、recommendation、score_breakdown、summary、reasons、risks、questions_to_confirm、evidence、missing_information、suggested_next_step 字段。"),
+          { temperature: 0, maxCompletionTokens: 2200 }
+        );
+        result = this.parseResumeEvaluationResult(response.data);
+      }
+      result = this.compactResumeEvaluationResult(result);
       await this.completeTask(task.id, result, response.usage);
 
       const evaluation = await this.prisma.candidateEvaluation.create({
@@ -309,7 +327,8 @@ export class AiService {
         data: {
           matchScore: result.match_score,
           recommendation: result.recommendation,
-          stage: this.stageForRecommendation(result)
+          stage: this.stageForRecommendation(result),
+          nextAction: AI_EVALUATION_COMPLETED
         }
       });
 
@@ -329,6 +348,7 @@ export class AiService {
       };
     } catch (error) {
       await this.failTask(task.id, error);
+      await this.markApplicationEvaluationFailed(application.id);
       throw error;
     }
   }
@@ -356,13 +376,14 @@ export class AiService {
 
     const application = await this.prisma.application.upsert({
       where: { candidateId_jobId: { candidateId: candidate.id, jobId: job.id } },
-      update: {},
+      update: { nextAction: AI_EVALUATION_RUNNING },
       create: {
         candidateId: candidate.id,
         jobId: job.id,
         source: candidate.sourceChannel,
         ownerId: candidate.sourceOwnerId,
-        stage: ApplicationStage.NEW
+        stage: ApplicationStage.NEW,
+        nextAction: AI_EVALUATION_RUNNING
       }
     });
 
@@ -583,6 +604,37 @@ export class AiService {
     };
   }
 
+  private parseResumeEvaluationResult(raw: unknown): ResumeEvaluationResult {
+    const parsed = resumeEvaluationResultSchema.safeParse(normalizeResumeEvaluationPayload(raw));
+    if (!parsed.success) {
+      throw new BadGatewayException(`AI resume evaluation output schema mismatch: ${parsed.error.issues
+        .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+        .join("; ")}`);
+    }
+    return parsed.data;
+  }
+
+  private resumeEvaluationMessages(inputSnapshot: unknown, extraInstruction?: string) {
+    return [
+      { role: "system" as const, content: `${jsonOnlySystemPrompt}\n${resumeEvaluationPrompt}` },
+      {
+        role: "user" as const,
+        content: JSON.stringify({
+          ...(extraInstruction ? { correction_instruction: extraInstruction } : {}),
+          output_contract: {
+            match_score: "0-100 number",
+            level: "green | yellow | red | gray",
+            recommendation:
+              "advance_to_hr_screen | send_to_hiring_manager_review | reject_for_current_job | add_to_talent_pool | need_more_information",
+            score_breakdown:
+              "object with skill_match, project_match, business_match, level_match, stability, salary_city_match; each has score, max_score, reason"
+          },
+          input: inputSnapshot
+        })
+      }
+    ];
+  }
+
   private parseResumeResult(raw: unknown, resumeText: string): ResumeParseResult {
     const parsed = resumeParseResultSchema.safeParse(normalizeResumeParsePayload(raw, resumeText));
     if (!parsed.success) {
@@ -714,6 +766,17 @@ export class AiService {
 
   private generateInitialInterviewKitInBackground(applicationId: string, userId?: string) {
     void this.tryGenerateInitialInterviewKit(applicationId, userId);
+  }
+
+  private async markApplicationEvaluationFailed(applicationId: string) {
+    try {
+      await this.prisma.application.update({
+        where: { id: applicationId },
+        data: { nextAction: AI_EVALUATION_FAILED }
+      });
+    } catch {
+      // The failed AiTask keeps the detailed error. Avoid masking the original evaluation failure.
+    }
   }
 
   private createTask(taskType: AiTaskType, inputSnapshot: unknown, createdBy?: string) {

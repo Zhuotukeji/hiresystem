@@ -14,6 +14,8 @@ export const resumeEvaluationPrompt = `
 skill_match 25，project_match 25，business_match 15，level_match 15，stability 10，salary_city_match 10。
 level 必须是 green/yellow/red/gray。
 recommendation 必须是 advance_to_hr_screen/send_to_hiring_manager_review/reject_for_current_job/add_to_talent_pool/need_more_information。
+score_breakdown 必须是对象，且必须包含 skill_match、project_match、business_match、level_match、stability、salary_city_match；每项必须包含 score、max_score、reason。
+不要输出 decision、dimension_scores、中文 recommendation 替代字段；必须使用 match_score、level、recommendation、score_breakdown 这些字段名。
 summary 控制在120字以内；reasons 不超过4条；risks 不超过4条；questions_to_confirm 不超过5条。
 所有结论必须有证据或明确说明信息不足；如果信息足够，直接给出推进建议，不要反复要求补充信息。
 `;

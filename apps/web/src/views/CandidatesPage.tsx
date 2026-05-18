@@ -25,7 +25,13 @@ import { Link } from "react-router-dom";
 import { api, ApiList } from "../api/client";
 import { Candidate, CandidateEvaluation, Job, ResumeEvaluationResponse, ResumeParseResult } from "../api/types";
 import { canDeleteResource } from "../domain/permissions";
-import { getCandidateAiSubmitBlocker, getResumeParseErrorMessage, hasResumeInput, shouldFallbackToResumeParseText } from "../domain/candidateAi";
+import {
+  getCandidateAiSubmitBlocker,
+  getCandidatePersistedAiEvaluationState,
+  getResumeParseErrorMessage,
+  hasResumeInput,
+  shouldFallbackToResumeParseText
+} from "../domain/candidateAi";
 import { useCurrentPermissions } from "../hooks/useCurrentUser";
 import { PageHeader } from "../ui/PageHeader";
 import { ScoreTag } from "../ui/ScoreTag";
@@ -199,9 +205,29 @@ export function CandidatesPage() {
   });
 
   const canDeleteCandidate = canDeleteResource(permissions.data, "CANDIDATE");
+  const hasRunningAiEvaluation = useMemo(
+    () => (data?.items ?? []).some((candidate) => getCandidatePersistedAiEvaluationState(candidate).status === "evaluating"),
+    [data?.items]
+  );
+
+  useEffect(() => {
+    if (!hasRunningAiEvaluation) return;
+    const timer = window.setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: ["candidates"] });
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [hasRunningAiEvaluation, queryClient]);
 
   useEffect(() => {
     if (aiEvaluationStatus !== "evaluating") return;
+    const persistedState = getCandidatePersistedAiEvaluationState(createdCandidateQuery.data);
+    if (persistedState.status === "failed") {
+      setAiEvaluationStatus("failed");
+      setAiEvaluationError(`AI 判断失败：${persistedState.application?.job?.title ?? "目标岗位"}`);
+      queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      return;
+    }
+
     const evaluation = createdCandidateQuery.data?.evaluations?.[0];
     if (!evaluation) return;
 
@@ -209,7 +235,7 @@ export function CandidatesPage() {
     setAiEvaluationStatus("completed");
     message.success("AI 判断已完成");
     queryClient.invalidateQueries({ queryKey: ["candidates"] });
-  }, [aiEvaluationStatus, createdCandidateQuery.data?.evaluations, queryClient]);
+  }, [aiEvaluationStatus, createdCandidateQuery.data, createdCandidateQuery.data?.evaluations, queryClient]);
 
   function closeModal() {
     setOpen(false);
@@ -246,7 +272,15 @@ export function CandidatesPage() {
             { title: "职位", dataIndex: "currentTitle" },
             { title: "城市", dataIndex: "city" },
             { title: "年限", dataIndex: "yearsOfExperience" },
-            { title: "状态", dataIndex: "status" },
+            {
+              title: "状态",
+              render: (_, record) => {
+                const persistedState = getCandidatePersistedAiEvaluationState(record);
+                if (persistedState.status === "evaluating") return <Tag color="processing">AI判断中...</Tag>;
+                if (persistedState.status === "failed") return <Tag color="warning">AI判断失败</Tag>;
+                return record.status;
+              }
+            },
             {
               title: "最新判断",
               render: (_, record) => {
