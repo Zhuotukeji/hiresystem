@@ -36,6 +36,10 @@ export class ResumeParseDto {
   @IsOptional()
   @IsString()
   resumeText?: string;
+
+  @IsOptional()
+  @IsString()
+  mode?: string;
 }
 
 export class OverrideEvaluationDto {

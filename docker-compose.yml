@@ -19,6 +19,9 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-local}
+        APP_BUILD_TIME: ${APP_BUILD_TIME:-unknown}
     env_file:
       - .env
     environment:

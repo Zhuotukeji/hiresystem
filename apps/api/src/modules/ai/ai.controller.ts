@@ -45,6 +45,11 @@ export class AiController {
     return this.aiService.parseResume(dto, file, user?.sub);
   }
 
+  @Post("resume-parse-text")
+  parseResumeText(@Body() dto: ResumeParseDto, @CurrentUser() user: RequestUser) {
+    return this.aiService.parseResume(dto, undefined, user?.sub);
+  }
+
   @Patch("resume-evaluations/:id/override")
   overrideResumeEvaluation(
     @Param("id") id: string,

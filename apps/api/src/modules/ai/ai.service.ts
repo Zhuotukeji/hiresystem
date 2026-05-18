@@ -29,6 +29,7 @@ import {
 } from "./ai.prompts";
 import { buildResumeEvaluationInput, getResumeEvaluationInputMetrics } from "./resume-evaluation-input";
 import { ResumeUploadFile, extractResumeText } from "./resume-extractor";
+import { parseResumeLocally } from "./local-resume-parser";
 
 @Injectable()
 export class AiService {
@@ -58,6 +59,14 @@ export class AiService {
 
   async parseResume(dto: ResumeParseDto, file?: ResumeUploadFile, userId?: string) {
     const resumeText = await extractResumeText(file, dto.resumeText);
+    if (dto.mode !== "ai") {
+      const result = parseResumeLocally(resumeText);
+      this.logger.log(
+        `Resume parsed locally file=${file?.originalname ?? "text"} chars=${resumeText.length} name=${result.name || "-"} title=${result.currentTitle || "-"}`
+      );
+      return { status: "local_completed", ai_parse_status: "skipped", result };
+    }
+
     const inputSnapshot = {
       file: file
         ? {
@@ -74,7 +83,7 @@ export class AiService {
       const response = await this.aiProvider.completeJson([
         { role: "system", content: `${jsonOnlySystemPrompt}\n${resumeParsePrompt}` },
         { role: "user", content: JSON.stringify({ resume_text: resumeText }) }
-      ]);
+      ], { temperature: 0, maxCompletionTokens: 1000 });
       const result = this.parseResumeResult(response.data, resumeText);
       await this.completeTask(task.id, result, response.usage);
       return { status: "completed", result };
@@ -259,11 +268,14 @@ export class AiService {
     );
 
     try {
-      const response = await this.aiProvider.completeJson([
-        { role: "system", content: `${jsonOnlySystemPrompt}\n${resumeEvaluationPrompt}` },
-        { role: "user", content: JSON.stringify(inputSnapshot) }
-      ]);
-      const result = resumeEvaluationResultSchema.parse(response.data);
+      const response = await this.aiProvider.completeJson(
+        [
+          { role: "system", content: `${jsonOnlySystemPrompt}\n${resumeEvaluationPrompt}` },
+          { role: "user", content: JSON.stringify(inputSnapshot) }
+        ],
+        { temperature: 0, maxCompletionTokens: 900 }
+      );
+      const result = this.compactResumeEvaluationResult(resumeEvaluationResultSchema.parse(response.data));
       await this.completeTask(task.id, result, response.usage);
 
       const evaluation = await this.prisma.candidateEvaluation.create({
@@ -332,6 +344,7 @@ export class AiService {
       }
     });
 
+    this.logger.log(`AI resume evaluation queued candidate=${candidate.id} job=${job.id} application=${application.id}`);
     void this.generateResumeEvaluation({ ...dto, applicationId: application.id, mode: "sync" }, userId).catch((error) => {
       const message = error instanceof Error ? error.stack ?? error.message : String(error);
       this.logger.error(`Async resume evaluation failed for candidate ${dto.candidateId} and job ${dto.jobId}: ${message}`);
@@ -561,6 +574,30 @@ export class AiService {
       resumeText: parsed.data.resumeText || resumeText,
       tags: parsed.data.tags.map((tag) => tag.trim()).filter(Boolean).slice(0, 8)
     };
+  }
+
+  private compactResumeEvaluationResult(result: ResumeEvaluationResult): ResumeEvaluationResult {
+    return {
+      ...result,
+      summary: this.compactText(result.summary, 160),
+      reasons: result.reasons.map((item) => this.compactText(item, 120)).filter(Boolean).slice(0, 3),
+      risks: result.risks.map((item) => this.compactText(item, 120)).filter(Boolean).slice(0, 3),
+      questions_to_confirm: result.questions_to_confirm
+        .map((item) => this.compactText(item, 120))
+        .filter(Boolean)
+        .slice(0, 3),
+      evidence: result.evidence
+        .map((item) => ({ ...item, text: this.compactText(item.text, 120) }))
+        .filter((item) => item.text)
+        .slice(0, 3),
+      missing_information: result.missing_information.map((item) => this.compactText(item, 80)).filter(Boolean).slice(0, 4),
+      suggested_next_step: this.compactText(result.suggested_next_step, 120)
+    };
+  }
+
+  private compactText(value: string | undefined, maxLength: number) {
+    const text = (value ?? "").replace(/\s+/g, " ").trim();
+    return text.length <= maxLength ? text : `${text.slice(0, maxLength - 1)}…`;
   }
 
   private stageForRecommendation(result: ResumeEvaluationResult): ApplicationStage {

@@ -25,7 +25,7 @@ import { Link } from "react-router-dom";
 import { api, ApiList } from "../api/client";
 import { Candidate, CandidateEvaluation, Job, ResumeEvaluationResponse, ResumeParseResult } from "../api/types";
 import { canDeleteResource } from "../domain/permissions";
-import { getCandidateAiSubmitBlocker, hasResumeInput } from "../domain/candidateAi";
+import { getCandidateAiSubmitBlocker, getResumeParseErrorMessage, hasResumeInput, shouldFallbackToResumeParseText } from "../domain/candidateAi";
 import { useCurrentPermissions } from "../hooks/useCurrentUser";
 import { PageHeader } from "../ui/PageHeader";
 import { ScoreTag } from "../ui/ScoreTag";
@@ -53,6 +53,12 @@ type CandidateFormValues = {
 };
 
 type AiEvaluationUiStatus = "idle" | "evaluating" | "completed" | "failed";
+
+type ResumeParseResponse = {
+  status: string;
+  ai_parse_status?: string;
+  result: ResumeParseResult;
+};
 
 export function CandidatesPage() {
   const [open, setOpen] = useState(false);
@@ -114,14 +120,8 @@ export function CandidatesPage() {
   });
 
   const parseResumeMutation = useMutation({
-    mutationFn: () => {
-      const formData = new FormData();
-      const uploadedFile = resumeFileList[0]?.originFileObj;
-      if (uploadedFile) formData.append("resume", uploadedFile);
-      if (resumeTextWatch?.trim()) formData.append("resumeText", resumeTextWatch.trim());
-      return api.postForm<{ status: string; result: ResumeParseResult }>("/ai/resume-parse", formData);
-    },
-    onSuccess: ({ result }) => {
+    mutationFn: () => parseResumeFromInput(resumeFileList, resumeTextWatch),
+    onSuccess: ({ result, status }) => {
       setParsedResume(result);
       setLatestEvaluation(null);
       setCreatedCandidate(null);
@@ -133,9 +133,9 @@ export function CandidatesPage() {
         sourceChannel: result.sourceChannel || "简历上传",
         tags: result.tags.join(", ")
       });
-      message.success("简历已识别，请确认候选人信息");
+      message.success(status === "local_completed" ? "简历已快速识别，请确认候选人信息" : "简历已识别，请确认候选人信息");
     },
-    onError: (error) => message.error(error instanceof Error ? error.message : "简历识别失败")
+    onError: (error) => message.error(getResumeParseErrorMessage(error instanceof Error ? error.message : "简历识别失败"))
   });
 
   const createAndEvaluateMutation = useMutation({
@@ -552,6 +552,24 @@ function EvaluationResult({
       }
     />
   );
+}
+
+async function parseResumeFromInput(fileList: UploadFile[], resumeText?: string): Promise<ResumeParseResponse> {
+  const text = resumeText?.trim() ?? "";
+  const formData = new FormData();
+  const uploadedFile = fileList[0]?.originFileObj;
+  if (uploadedFile) formData.append("resume", uploadedFile);
+  if (text) formData.append("resumeText", text);
+
+  try {
+    return await api.postForm<ResumeParseResponse>("/ai/resume-parse", formData);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (text && shouldFallbackToResumeParseText(message)) {
+      return api.post<ResumeParseResponse>("/ai/resume-parse-text", { resumeText: text });
+    }
+    throw error;
+  }
 }
 
 function evaluationToResponse(evaluation: CandidateEvaluation): ResumeEvaluationResponse {

@@ -15,7 +15,11 @@ RUN pnpm --filter @hiresystem/api build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
+ARG APP_VERSION=dev
+ARG APP_BUILD_TIME=unknown
 ENV NODE_ENV=production
+ENV APP_VERSION=$APP_VERSION
+ENV APP_BUILD_TIME=$APP_BUILD_TIME
 RUN corepack enable
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/api/node_modules ./apps/api/node_modules

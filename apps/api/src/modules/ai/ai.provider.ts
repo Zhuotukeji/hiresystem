@@ -5,11 +5,21 @@ type ChatMessage = {
   content: string;
 };
 
+type CompleteJsonOptions = {
+  temperature?: number;
+  maxCompletionTokens?: number;
+};
+
+type CompleteJsonResult = {
+  data: unknown;
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+};
+
 const DEFAULT_SUB2API_MODEL = "gpt-5.5";
 const PLACEHOLDER_API_KEYS = new Set(["replace-with-server-secret", "<server-secret>", "your-api-key", "your-sub2api-api-key"]);
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_RETRIES = 1;
-const DEFAULT_REASONING_EFFORT = "low";
+const DEFAULT_REASONING_EFFORT = "minimal";
 const SUPPORTED_REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
 
 @Injectable()
@@ -37,7 +47,7 @@ export class AiProvider {
     };
   }
 
-  async completeJson(messages: ChatMessage[]) {
+  async completeJson(messages: ChatMessage[], options: CompleteJsonOptions = {}): Promise<CompleteJsonResult> {
     const apiKeyStatus = this.apiKeyStatus();
     if (apiKeyStatus !== "configured") {
       throw new ServiceUnavailableException(
@@ -49,19 +59,24 @@ export class AiProvider {
     let lastNetworkError: unknown;
     for (let attempt = 1; attempt <= this.maxRetries; attempt += 1) {
       try {
+        const body: Record<string, unknown> = {
+          model: this.model,
+          messages,
+          temperature: options.temperature ?? 0.2,
+          reasoning_effort: this.reasoningEffort,
+          response_format: { type: "json_object" }
+        };
+        if (options.maxCompletionTokens) {
+          body.max_completion_tokens = options.maxCompletionTokens;
+        }
+
         response = await fetch(`${this.baseUrl}/chat/completions`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${this.apiKey}`
           },
-          body: JSON.stringify({
-            model: this.model,
-            messages,
-            temperature: 0.2,
-            reasoning_effort: this.reasoningEffort,
-            response_format: { type: "json_object" }
-          }),
+          body: JSON.stringify(body),
           signal: AbortSignal.timeout(this.timeoutMs)
         });
 
@@ -91,6 +106,9 @@ export class AiProvider {
 
     if (!response.ok) {
       const text = await response.text();
+      if (response.status === 400 && options.maxCompletionTokens && /max_completion_tokens|unsupported|unrecognized|unknown/i.test(text)) {
+        return this.completeJson(messages, { ...options, maxCompletionTokens: undefined });
+      }
       if (response.status === 401 || response.status === 403) {
         throw new ServiceUnavailableException(
           `AI request rejected (${response.status}). SUB2API_API_KEY is invalid or not authorized for model ${this.model}. Update the server .env file, then recreate the api container.`

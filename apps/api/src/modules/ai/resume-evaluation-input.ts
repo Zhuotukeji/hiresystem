@@ -6,9 +6,9 @@ export type ResumeEvaluationInputParams = {
   application: JsonRecord;
 };
 
-const RESUME_TEXT_LIMIT = 12_000;
-const JD_TEXT_LIMIT = 6_000;
-const TEXT_FIELD_LIMIT = 600;
+const RESUME_TEXT_LIMIT = 8_000;
+const JD_TEXT_LIMIT = 3_000;
+const TEXT_FIELD_LIMIT = 360;
 
 export function buildResumeEvaluationInput({ candidate, job, application }: ResumeEvaluationInputParams) {
   const profile = asRecord(job.profile);
@@ -23,10 +23,10 @@ export function buildResumeEvaluationInput({ candidate, job, application }: Resu
     decision_goal: "判断候选人是否匹配目标岗位，以及是否进入 HR 初试或下一阶段。",
     output_expectation: {
       be_concise: true,
-      summary_max_chars: 120,
-      max_reasons: 4,
-      max_risks: 4,
-      max_questions_to_confirm: 5,
+      summary_max_chars: 100,
+      max_reasons: 3,
+      max_risks: 3,
+      max_questions_to_confirm: 3,
       do_not_repeat_resume_or_jd: true
     },
     candidate_profile: {
@@ -63,19 +63,19 @@ export function buildResumeEvaluationInput({ candidate, job, application }: Resu
       jd_text_chars: jdText.length,
       profile: {
         mission: compactText(profile.mission, TEXT_FIELD_LIMIT),
-        must_have_skills: compactList(profile.mustHaveSkills, 12),
-        nice_to_have_skills: compactList(profile.niceToHaveSkills, 10),
-        target_companies: compactList(profile.targetCompanies, 10),
-        excluded_companies: compactList(profile.excludedCompanies, 10),
-        target_titles: compactList(profile.targetTitles, 10),
-        target_levels: compactList(profile.targetLevels, 10),
+        must_have_skills: compactList(profile.mustHaveSkills, 8),
+        nice_to_have_skills: compactList(profile.niceToHaveSkills, 6),
+        target_companies: compactList(profile.targetCompanies, 6),
+        excluded_companies: compactList(profile.excludedCompanies, 6),
+        target_titles: compactList(profile.targetTitles, 6),
+        target_levels: compactList(profile.targetLevels, 6),
         target_years_min: profile.targetYearsMin ?? null,
         target_years_max: profile.targetYearsMax ?? null,
-        key_project_experience: compactList(profile.keyProjectExperience, 10),
-        knockout_rules: compactList(profile.knockoutRules, 10),
-        flexible_rules: compactList(profile.flexibleRules, 10),
-        screening_questions: compactList(profile.screeningQuestions, 8),
-        interview_dimensions: compactList(profile.interviewDimensions, 8),
+        key_project_experience: compactList(profile.keyProjectExperience, 6),
+        knockout_rules: compactList(profile.knockoutRules, 6),
+        flexible_rules: compactList(profile.flexibleRules, 6),
+        screening_questions: compactList(profile.screeningQuestions, 5),
+        interview_dimensions: compactList(profile.interviewDimensions, 5),
         pass_score: profile.passScore ?? 75,
         yellow_score_min: profile.yellowScoreMin ?? 60,
         yellow_score_max: profile.yellowScoreMax ?? 74

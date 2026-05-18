@@ -32,8 +32,7 @@ pnpm dev
 ## Production
 
 ```bash
-docker compose -f docker-compose.prod.yml build
-docker compose -f docker-compose.prod.yml up -d
+APP_VERSION=$(git rev-parse --short HEAD) APP_BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) docker compose -f docker-compose.prod.yml up -d --build --force-recreate api web
 ```
 
 生产环境建议：
@@ -43,6 +42,6 @@ docker compose -f docker-compose.prod.yml up -d
 - ECS 安全组只开放 80/443/SSH
 - `.env` 中配置真实 `DATABASE_URL` 和 `SUB2API_*`
 - AI 默认模型为 `gpt-5.5`，生产环境在 `.env` 中配置 `SUB2API_MODEL=gpt-5.5`
-- AI 默认使用 `SUB2API_REASONING_EFFORT=low`，更偏速度；如果网关确认支持，可改成 `none`
-- `/api/health` 会返回 AI 的 baseURL、model、reasoning effort、timeout、retry 和 API Key 配置状态，便于排查线上环境变量是否生效
+- AI 默认使用 `SUB2API_REASONING_EFFORT=minimal`，更偏速度；如果网关确认支持，可改成 `none`
+- `/api/health` 会返回版本、构建时间、关键 AI 路由、AI 的 baseURL、model、reasoning effort、timeout、retry 和 API Key 配置状态，便于确认线上是否部署到最新镜像
 - 简历判定通过后，初面套件改为后台生成，避免接口同步等待第二次 AI 调用

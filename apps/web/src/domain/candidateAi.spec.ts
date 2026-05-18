@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { canStartManualCandidateEvaluation, canSubmitAiCandidate, getCandidateAiSubmitBlocker, hasResumeInput } from "./candidateAi";
+import {
+  canStartManualCandidateEvaluation,
+  canSubmitAiCandidate,
+  getCandidateAiSubmitBlocker,
+  getResumeParseErrorMessage,
+  hasResumeInput,
+  isResumeParseRouteMissingError,
+  shouldFallbackToResumeParseText
+} from "./candidateAi";
 
 describe("candidate AI helpers", () => {
   it("detects whether resume input is available", () => {
@@ -25,5 +33,12 @@ describe("candidate AI helpers", () => {
     expect(canStartManualCandidateEvaluation("job-1", false)).toBe(true);
     expect(canStartManualCandidateEvaluation("", false)).toBe(false);
     expect(canStartManualCandidateEvaluation("job-1", true)).toBe(false);
+  });
+
+  it("detects stale API resume parse route errors", () => {
+    expect(isResumeParseRouteMissingError("Cannot POST /api/ai/resume-parse")).toBe(true);
+    expect(shouldFallbackToResumeParseText("Payload Too Large")).toBe(true);
+    expect(getResumeParseErrorMessage("Cannot POST /api/ai/resume-parse")).toContain("/api/health");
+    expect(getResumeParseErrorMessage("Bad request")).toBe("Bad request");
   });
 });

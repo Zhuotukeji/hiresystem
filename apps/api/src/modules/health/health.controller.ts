@@ -17,8 +17,15 @@ export class HealthController {
     return {
       ok: true,
       service: "hiresystem-api",
+      version: process.env.APP_VERSION ?? "dev",
+      buildTime: process.env.APP_BUILD_TIME ?? "unknown",
       time: new Date().toISOString(),
-      ai: this.aiProvider.configStatus
+      ai: this.aiProvider.configStatus,
+      routes: {
+        resumeParse: "/api/ai/resume-parse",
+        resumeParseText: "/api/ai/resume-parse-text",
+        resumeEvaluations: "/api/ai/resume-evaluations"
+      }
     };
   }
 }
