@@ -44,7 +44,7 @@ export class JobsService {
             candidate: true,
             evaluations: { orderBy: { createdAt: "desc" }, take: 1 },
             interviews: { include: { feedback: true }, orderBy: { createdAt: "desc" } },
-            interviewKits: { orderBy: { createdAt: "desc" }, take: 1 }
+            interviewKits: { orderBy: { createdAt: "desc" } }
           },
           orderBy: { updatedAt: "desc" }
         },

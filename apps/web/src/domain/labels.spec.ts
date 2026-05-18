@@ -5,6 +5,7 @@ import {
   companyTypeLabel,
   evaluationResponseStatusLabel,
   interviewKitStatusLabel,
+  interviewStatusLabel,
   interviewStageLabel,
   jobStatusLabel,
   recommendationActionLabel
@@ -27,6 +28,7 @@ describe("display labels", () => {
 
   it("renders Chinese labels for interview and sourcing values", () => {
     expect(interviewStageLabel("first_interview")).toBe("一面");
+    expect(interviewStatusLabel("SCHEDULED")).toBe("待面试");
     expect(interviewKitStatusLabel("not_required")).toBe("暂不需要生成面试套件");
     expect(companyTypeLabel("competitor")).toBe("竞品公司");
   });

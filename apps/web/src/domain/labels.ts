@@ -54,6 +54,12 @@ export const interviewStageLabels: Record<string, string> = {
   final_interview: "终面"
 };
 
+export const interviewStatusLabels: Record<string, string> = {
+  SCHEDULED: "待面试",
+  COMPLETED: "已完成",
+  CANCELED: "已取消"
+};
+
 export const aiEvaluationNextActionLabels: Record<string, string> = {
   AI_EVALUATION_RUNNING: "AI判断中",
   AI_EVALUATION_COMPLETED: "AI判断完成",
@@ -88,6 +94,10 @@ export function interviewKitStatusLabel(status: LabelValue) {
 
 export function interviewStageLabel(stage: LabelValue) {
   return labelFromMap(stage, interviewStageLabels);
+}
+
+export function interviewStatusLabel(status: LabelValue) {
+  return labelFromMap(status, interviewStatusLabels);
 }
 
 export function aiEvaluationNextActionLabel(action: LabelValue) {
