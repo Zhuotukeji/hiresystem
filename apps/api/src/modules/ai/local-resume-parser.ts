@@ -67,7 +67,7 @@ export function parseResumeLocally(resumeText: string): ResumeParseResult {
   const lines = normalized
     .split("\n")
     .map((line) => cleanLine(line))
-    .filter(Boolean)
+    .filter((line) => line && !isNoiseLine(line))
     .slice(0, 120);
 
   const phone = extractPhone(normalized);
@@ -111,6 +111,7 @@ function normalizeText(value: string) {
   return value
     .replace(/\u0000/g, "")
     .replace(/\r\n/g, "\n")
+    .replace(/\b[A-Za-z0-9]{24,}\b/g, (token) => (isOpaqueToken(token) ? "" : token))
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -132,12 +133,14 @@ function extractEmail(text: string) {
 function extractName(lines: string[], phone: string, email: string) {
   for (const line of lines.slice(0, 20)) {
     const labeled = line.match(/(?:姓名|名字)[:：\s]+([\u4e00-\u9fa5A-Za-z·.\s]{2,30})/);
-    if (labeled?.[1]) return labeled[1].trim();
+    const candidate = sanitizeFieldValue(labeled?.[1], 30);
+    if (candidate && isPlausibleName(candidate)) return candidate;
   }
 
   for (const line of lines.slice(0, 12)) {
     const compact = line.replace(/\s+/g, "");
     if (!compact || (phone && compact.includes(phone)) || (email && compact.includes(email))) continue;
+    if (isNoiseLine(compact)) continue;
     if (/简历|电话|手机|邮箱|微信|求职|应聘|岗位|职位|工作|项目|教育|经验|公司|大学|本科|硕士|博士/i.test(compact)) continue;
     if (/^[\u4e00-\u9fa5·]{2,6}$/.test(compact)) return compact;
     if (/^[A-Za-z][A-Za-z\s·.-]{1,35}$/.test(line) && !/resume|profile|candidate|email|phone/i.test(line)) return line.trim();
@@ -158,7 +161,8 @@ function extractRole(text: string, lines: string[]) {
       return { title: role.title, tags: role.tags };
     }
   }
-  return { title: labeled.slice(0, 40), tags: labeled ? [labeled.slice(0, 20)] : [] };
+  const fallbackTitle = sanitizeFieldValue(labeled, 40);
+  return { title: fallbackTitle, tags: fallbackTitle ? [fallbackTitle.slice(0, 20)] : [] };
 }
 
 function extractCompany(lines: string[]) {
@@ -175,12 +179,15 @@ function extractCompany(lines: string[]) {
 }
 
 function stripCompanyNoise(value: string) {
-  return value
-    .replace(/\d{4}[./-]\d{1,2}.*$/, "")
+  const cleaned = value
+    .replace(/^\d{4}[./-]\d{1,2}\s*(?:[-~至到]\s*(?:今|至今|\d{4}[./-]\d{1,2})?)?\s*/, "")
     .replace(/(?:职位|岗位|担任|任职).*/, "")
     .replace(/[，,；;].*$/, "")
-    .trim()
-    .slice(0, 60);
+    .trim();
+  const companyMatch = cleaned.match(
+    /([\u4e00-\u9fa5A-Za-z0-9（）()·.&-]{2,70}(?:股份有限公司|有限责任公司|有限公司|集团|公司|科技|网络|信息|软件))/
+  );
+  return sanitizeFieldValue(companyMatch?.[1] ?? cleaned, 60);
 }
 
 function extractCity(text: string) {
@@ -202,7 +209,7 @@ function extractYears(text: string) {
 
 function extractEducation(lines: string[]) {
   const line = lines.find((item) => /(博士|硕士|研究生|本科|大专|大学|学院|MBA)/.test(item));
-  return line ? line.slice(0, 80) : "";
+  return sanitizeFieldValue(line, 80);
 }
 
 function extractSalary(lines: string[], labels: string[]) {
@@ -210,15 +217,16 @@ function extractSalary(lines: string[], labels: string[]) {
   if (labeled && /\d|k|K|万|薪/.test(labeled)) return labeled.slice(0, 40);
 
   const salaryLine = lines.find((line) => /\d+\s*[kK]|年薪|月薪|\d+\s*万/.test(line));
-  return salaryLine ? salaryLine.slice(0, 40) : "";
+  return sanitizeFieldValue(salaryLine, 40);
 }
 
 function extractLabeledValue(lines: string[], labels: string[]) {
   const labelPattern = labels.map(escapeRegExp).join("|");
-  const pattern = new RegExp(`(?:${labelPattern})\\s*[:：]?\\s*(.+)`, "i");
+  const pattern = new RegExp(`(?:^|[\\s,，;；|｜])(?:${labelPattern})\\s*[:：]?\\s*(.+)`, "i");
   for (const line of lines) {
     const match = line.match(pattern);
-    if (match?.[1]) return match[1].trim().slice(0, 100);
+    const value = sanitizeFieldValue(match?.[1], 100);
+    if (value) return value;
   }
   return "";
 }
@@ -252,4 +260,38 @@ function buildSummary(params: {
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function sanitizeFieldValue(value: string | undefined, maxLength: number) {
+  const cleaned = (value ?? "")
+    .replace(/\b[A-Za-z0-9]{24,}\b/g, (token) => (isOpaqueToken(token) ? "" : token))
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned || isNoiseLine(cleaned)) return "";
+  return cleaned.slice(0, maxLength).trim();
+}
+
+function isPlausibleName(value: string) {
+  const compact = value.replace(/\s+/g, "");
+  if (isNoiseLine(compact)) return false;
+  return /^[\u4e00-\u9fa5·]{2,8}$/.test(compact) || /^[A-Za-z][A-Za-z\s·.-]{1,35}$/.test(value);
+}
+
+function isNoiseLine(value: string) {
+  const compact = value.replace(/[\s:：,，;；|｜._-]/g, "");
+  if (!compact) return true;
+  if (isOpaqueToken(compact)) return true;
+  const asciiChars = compact.match(/[A-Za-z0-9]/g)?.length ?? 0;
+  const chineseChars = compact.match(/[\u4e00-\u9fa5]/g)?.length ?? 0;
+  if (compact.length >= 24 && chineseChars === 0 && asciiChars / compact.length > 0.85) return true;
+  return false;
+}
+
+function isOpaqueToken(token: string) {
+  if (token.length < 24) return false;
+  const hasDigit = /\d/.test(token);
+  const hasLower = /[a-z]/.test(token);
+  const hasUpper = /[A-Z]/.test(token);
+  const isHexLike = /^[a-f0-9]{24,}$/i.test(token);
+  return isHexLike || (hasDigit && hasLower && hasUpper);
 }

@@ -49,9 +49,19 @@ function normalizeText(value?: string) {
   return (value ?? "")
     .replace(/\u0000/g, "")
     .replace(/\r\n/g, "\n")
+    .replace(/\b[A-Za-z0-9]{24,}\b/g, (token) => (isOpaqueToken(token) ? "" : token))
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function isOpaqueToken(token: string) {
+  if (token.length < 24) return false;
+  const hasDigit = /\d/.test(token);
+  const hasLower = /[a-z]/.test(token);
+  const hasUpper = /[A-Z]/.test(token);
+  const isHexLike = /^[a-f0-9]{24,}$/i.test(token);
+  return isHexLike || (hasDigit && hasLower && hasUpper);
 }
 
 function getExtension(filename: string) {

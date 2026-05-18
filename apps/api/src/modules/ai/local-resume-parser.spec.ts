@@ -35,4 +35,24 @@ describe("local resume parser", () => {
     expect(result.tags).toContain("后端");
     expect(result.city).toBe("北京");
   });
+
+  it("drops opaque PDF watermark tokens instead of filling them into fields", () => {
+    const token = "ca02b7bad64ceed11HB63N24FFVQx466VfyZWOCrmfbVMhVk";
+    const result = parseResumeLocally(`
+${token}
+姓名：王五
+微信：${token}
+当前职位：${token}
+2021.03-至今 上海米动科技有限公司 HRBP
+负责绩效管理、组织发展和业务团队人才盘点。
+`);
+    const serialized = JSON.stringify(result);
+
+    expect(serialized).not.toContain(token);
+    expect(result.name).toBe("王五");
+    expect(result.wechat).toBe("");
+    expect(result.currentTitle).toBe("HRBP");
+    expect(result.currentCompanyName).toContain("上海米动科技有限公司");
+    expect(result.resumeText).not.toContain(token);
+  });
 });

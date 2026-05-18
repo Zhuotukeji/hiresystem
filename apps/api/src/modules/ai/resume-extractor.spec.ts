@@ -18,6 +18,15 @@ describe("resume extractor", () => {
     await expect(extractResumeText(undefined, "李四，前端工程师")).resolves.toContain("前端工程师");
   });
 
+  it("removes opaque watermark tokens from extracted resume text", async () => {
+    const token = "ca02b7bad64ceed11HB63N24FFVQx466VfyZWOCrmfbVMhVk";
+    const text = await extractResumeText(undefined, `王五\n${token}\nHRBP`);
+
+    expect(text).toContain("王五");
+    expect(text).toContain("HRBP");
+    expect(text).not.toContain(token);
+  });
+
   it("rejects unsupported formats", async () => {
     await expect(
       extractResumeText({

@@ -121,7 +121,7 @@ export function CandidatesPage() {
 
   const parseResumeMutation = useMutation({
     mutationFn: () => parseResumeFromInput(resumeFileList, resumeTextWatch),
-    onSuccess: ({ result, status }) => {
+    onSuccess: ({ result, status, ai_parse_status }) => {
       setParsedResume(result);
       setLatestEvaluation(null);
       setCreatedCandidate(null);
@@ -133,7 +133,11 @@ export function CandidatesPage() {
         sourceChannel: result.sourceChannel || "简历上传",
         tags: result.tags.join(", ")
       });
-      message.success(status === "local_completed" ? "简历已快速识别，请确认候选人信息" : "简历已识别，请确认候选人信息");
+      if (ai_parse_status === "failed") {
+        message.warning("AI 精确识别暂不可用，已用本地识别结果回填，请人工确认");
+      } else {
+        message.success(status === "local_completed" ? "简历已快速识别，请确认候选人信息" : "AI 已精确识别简历，请确认候选人信息");
+      }
     },
     onError: (error) => message.error(getResumeParseErrorMessage(error instanceof Error ? error.message : "简历识别失败"))
   });
@@ -560,13 +564,14 @@ async function parseResumeFromInput(fileList: UploadFile[], resumeText?: string)
   const uploadedFile = fileList[0]?.originFileObj;
   if (uploadedFile) formData.append("resume", uploadedFile);
   if (text) formData.append("resumeText", text);
+  formData.append("mode", "ai");
 
   try {
     return await api.postForm<ResumeParseResponse>("/ai/resume-parse", formData);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (text && shouldFallbackToResumeParseText(message)) {
-      return api.post<ResumeParseResponse>("/ai/resume-parse-text", { resumeText: text });
+      return api.post<ResumeParseResponse>("/ai/resume-parse-text", { resumeText: text, mode: "ai" });
     }
     throw error;
   }

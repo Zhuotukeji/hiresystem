@@ -59,15 +59,16 @@ export class AiService {
 
   async parseResume(dto: ResumeParseDto, file?: ResumeUploadFile, userId?: string) {
     const resumeText = await extractResumeText(file, dto.resumeText);
-    if (dto.mode !== "ai") {
-      const result = parseResumeLocally(resumeText);
+    const localResult = parseResumeLocally(resumeText);
+    if (dto.mode === "local") {
       this.logger.log(
-        `Resume parsed locally file=${file?.originalname ?? "text"} chars=${resumeText.length} name=${result.name || "-"} title=${result.currentTitle || "-"}`
+        `Resume parsed locally file=${file?.originalname ?? "text"} chars=${resumeText.length} name=${localResult.name || "-"} title=${localResult.currentTitle || "-"}`
       );
-      return { status: "local_completed", ai_parse_status: "skipped", result };
+      return { status: "local_completed", ai_parse_status: "skipped", result: localResult };
     }
 
     const inputSnapshot = {
+      mode: dto.mode ?? "ai",
       file: file
         ? {
             originalName: file.originalname,
@@ -75,21 +76,42 @@ export class AiService {
             size: file.size
           }
         : null,
-      resumeText
+      resumeTextChars: resumeText.length,
+      resumeTextPreview: this.compactResumeParseText(resumeText, 12_000),
+      localGuess: localResult
     };
     const task = await this.createTask(AiTaskType.RESUME_PARSE, inputSnapshot, userId);
 
     try {
-      const response = await this.aiProvider.completeJson([
-        { role: "system", content: `${jsonOnlySystemPrompt}\n${resumeParsePrompt}` },
-        { role: "user", content: JSON.stringify({ resume_text: resumeText }) }
-      ], { temperature: 0, maxCompletionTokens: 1000 });
-      const result = this.parseResumeResult(response.data, resumeText);
+      const response = await this.aiProvider.completeJson(
+        [
+          { role: "system", content: `${jsonOnlySystemPrompt}\n${resumeParsePrompt}` },
+          {
+            role: "user",
+            content: JSON.stringify({
+              task: "resume_parse",
+              extraction_mode: "precise",
+              local_guess: localResult,
+              resume_text_chars: resumeText.length,
+              resume_text: this.compactResumeParseText(resumeText, 24_000)
+            })
+          }
+        ],
+        { temperature: 0, maxCompletionTokens: 1200 }
+      );
+      const result = this.mergeResumeParseResults(this.parseResumeResult(response.data, resumeText), localResult, resumeText);
       await this.completeTask(task.id, result, response.usage);
-      return { status: "completed", result };
+      return { status: "completed", ai_parse_status: "completed", result };
     } catch (error) {
       await this.failTask(task.id, error);
-      throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`AI resume parse failed, fallback to local parser task=${task.id}: ${message}`);
+      return {
+        status: "local_completed",
+        ai_parse_status: "failed",
+        ai_error: this.compactText(message, 240),
+        result: localResult
+      };
     }
   }
 
@@ -572,8 +594,83 @@ export class AiService {
     return {
       ...parsed.data,
       resumeText: parsed.data.resumeText || resumeText,
-      tags: parsed.data.tags.map((tag) => tag.trim()).filter(Boolean).slice(0, 8)
+      tags: parsed.data.tags.map((tag) => this.cleanResumeParseText(tag, 40)).filter(Boolean).slice(0, 8)
     };
+  }
+
+  private mergeResumeParseResults(aiResult: ResumeParseResult, localResult: ResumeParseResult, resumeText: string): ResumeParseResult {
+    return {
+      name: this.pickResumeText(aiResult.name, localResult.name, 30),
+      phone: localResult.phone || this.pickResumeText(aiResult.phone, "", 30),
+      email: localResult.email || this.pickResumeText(aiResult.email, "", 80),
+      wechat: this.pickResumeText(aiResult.wechat, localResult.wechat, 80),
+      currentCompanyName: this.pickResumeText(aiResult.currentCompanyName, localResult.currentCompanyName, 80),
+      currentTitle: this.pickResumeText(aiResult.currentTitle, localResult.currentTitle, 60),
+      currentLevel: this.pickResumeText(aiResult.currentLevel, localResult.currentLevel, 40),
+      city: this.pickResumeText(aiResult.city, localResult.city, 40),
+      yearsOfExperience: aiResult.yearsOfExperience ?? localResult.yearsOfExperience ?? null,
+      educationSummary: this.pickResumeText(aiResult.educationSummary, localResult.educationSummary, 120),
+      expectedSalary: this.pickResumeText(aiResult.expectedSalary, localResult.expectedSalary, 60),
+      currentSalary: this.pickResumeText(aiResult.currentSalary, localResult.currentSalary, 60),
+      availability: this.pickResumeText(aiResult.availability, localResult.availability, 60),
+      jobIntention: this.pickResumeText(aiResult.jobIntention, localResult.jobIntention, 100),
+      sourceChannel: this.pickResumeText(aiResult.sourceChannel, localResult.sourceChannel, 40),
+      tags: this.mergeResumeTags(aiResult.tags, localResult.tags),
+      aiSummary: this.pickResumeText(aiResult.aiSummary, localResult.aiSummary, 500),
+      resumeText: this.stripOpaqueResumeTokens(resumeText)
+    };
+  }
+
+  private mergeResumeTags(aiTags: string[], localTags: string[]) {
+    const tags = new Set<string>();
+    for (const tag of [...aiTags, ...localTags]) {
+      const cleaned = this.cleanResumeParseText(tag, 40);
+      if (cleaned) tags.add(cleaned);
+    }
+    return Array.from(tags).slice(0, 8);
+  }
+
+  private pickResumeText(primary: string | undefined, fallback: string | undefined, maxLength: number) {
+    return this.cleanResumeParseText(primary, maxLength) || this.cleanResumeParseText(fallback, maxLength);
+  }
+
+  private cleanResumeParseText(value: string | undefined, maxLength: number) {
+    const cleaned = this.stripOpaqueResumeTokens(value ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!cleaned || this.isResumeNoiseText(cleaned)) return "";
+    return cleaned.slice(0, maxLength).trim();
+  }
+
+  private stripOpaqueResumeTokens(value: string) {
+    return value.replace(/\b[A-Za-z0-9]{24,}\b/g, (token) => (this.isOpaqueResumeToken(token) ? "" : token));
+  }
+
+  private isResumeNoiseText(value: string) {
+    const compact = value.replace(/[\s:：,，;；|｜._-]/g, "");
+    if (!compact) return true;
+    if (this.isOpaqueResumeToken(compact)) return true;
+    const asciiChars = compact.match(/[A-Za-z0-9]/g)?.length ?? 0;
+    const chineseChars = compact.match(/[\u4e00-\u9fa5]/g)?.length ?? 0;
+    return compact.length >= 24 && chineseChars === 0 && asciiChars / compact.length > 0.85;
+  }
+
+  private isOpaqueResumeToken(token: string) {
+    if (token.length < 24) return false;
+    const hasDigit = /\d/.test(token);
+    const hasLower = /[a-z]/.test(token);
+    const hasUpper = /[A-Z]/.test(token);
+    const isHexLike = /^[a-f0-9]{24,}$/i.test(token);
+    return isHexLike || (hasDigit && hasLower && hasUpper);
+  }
+
+  private compactResumeParseText(value: string, maxLength: number) {
+    const text = this.stripOpaqueResumeTokens(value).replace(/\n{3,}/g, "\n\n").trim();
+    if (text.length <= maxLength) return text;
+    const marker = `\n\n[中间内容已省略，原文共${text.length}字]\n\n`;
+    const headLength = Math.max(0, Math.floor((maxLength - marker.length) * 0.75));
+    const tailLength = Math.max(0, maxLength - marker.length - headLength);
+    return `${text.slice(0, headLength)}${marker}${text.slice(-tailLength)}`;
   }
 
   private compactResumeEvaluationResult(result: ResumeEvaluationResult): ResumeEvaluationResult {
