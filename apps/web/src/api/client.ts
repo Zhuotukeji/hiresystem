@@ -112,10 +112,14 @@ function formatApiErrorMessage(error: ApiErrorPayload, requestId?: string) {
   const message = Array.isArray(error.message) ? error.message.join("；") : error.message ?? "请求失败";
   const details = compactDetails(error.details);
   const effectiveRequestId = requestId ?? error.requestId;
+  const deploymentHint = isDefaultNestInternalError(error)
+    ? "后端返回默认500，当前 API 可能不是最新镜像，或 nginx 没有转发到最新 Nest 服务。请重建 API 容器并检查 /api/health 是否包含 features.interviewKitFallback=true"
+    : "";
   return [
     message,
     error.error ? `错误类型：${error.error}` : "",
     effectiveRequestId ? `错误ID：${effectiveRequestId}` : "",
+    deploymentHint,
     details ? `详情：${details}` : ""
   ]
     .filter(Boolean)
@@ -130,6 +134,10 @@ function compactDetails(details: unknown) {
   } catch {
     return String(details).slice(0, 500);
   }
+}
+
+function isDefaultNestInternalError(error: ApiErrorPayload) {
+  return error.message === "Internal server error" && !error.error && !error.requestId && !error.details && !error.stack;
 }
 
 function createRequestId() {

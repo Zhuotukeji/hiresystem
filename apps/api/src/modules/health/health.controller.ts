@@ -24,7 +24,13 @@ export class HealthController {
       routes: {
         resumeParse: "/api/ai/resume-parse",
         resumeParseText: "/api/ai/resume-parse-text",
-        resumeEvaluations: "/api/ai/resume-evaluations"
+        resumeEvaluations: "/api/ai/resume-evaluations",
+        interviewKits: "/api/ai/interview-kits"
+      },
+      features: {
+        errorDiagnostics: true,
+        interviewKitFallback: true,
+        requestIdHeader: true
       }
     };
   }
