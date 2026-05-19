@@ -191,6 +191,25 @@ export type Interview = {
   scheduledAt?: string;
   status: string;
   feedback?: unknown;
+  interviewer?: Pick<User, "id" | "name" | "email">;
   candidate?: Candidate;
   job?: Job;
 };
+
+export type InterviewTask = {
+  interviewId: string;
+  candidateId: string;
+  candidateName: string;
+  candidateTitle?: string;
+  candidateCompany?: string;
+  jobId: string;
+  jobTitle: string;
+  jobDepartment?: string;
+  interviewRound: string;
+  status: string;
+  scheduledAt?: string;
+  createdAt: string;
+  hasFeedback: boolean;
+};
+
+export type InterviewerOption = Pick<User, "id" | "name" | "email" | "role">;

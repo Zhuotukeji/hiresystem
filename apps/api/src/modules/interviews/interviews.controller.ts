@@ -12,6 +12,16 @@ export class InterviewsController {
     return this.interviewsService.create(dto);
   }
 
+  @Get("my-tasks")
+  myTasks(@CurrentUser() user: RequestUser) {
+    return this.interviewsService.myTasks(user.sub);
+  }
+
+  @Get("interviewers")
+  interviewers() {
+    return this.interviewsService.interviewers();
+  }
+
   @Get(":id/workspace")
   workspace(@Param("id") id: string) {
     return this.interviewsService.workspace(id);

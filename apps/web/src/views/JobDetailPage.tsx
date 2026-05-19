@@ -18,7 +18,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
-import { Application, Interview, InterviewKit, Job } from "../api/types";
+import { Application, Interview, InterviewKit, InterviewerOption, Job } from "../api/types";
 import { AiJdAssistant } from "../components/AiJdAssistant";
 import { interviewStageLabel, interviewStatusLabel, jobStatusLabel } from "../domain/labels";
 import { pipelineStages, stageLabel, stageToKitStage } from "../domain/stages";
@@ -191,7 +191,13 @@ function Pipeline({ applications, jobId }: { applications: Application[]; jobId:
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [preparingApplicationId, setPreparingApplicationId] = useState<string>();
+  const [selectedInterviewerId, setSelectedInterviewerId] = useState<string>();
   const preparingApplication = applications.find((application) => application.id === preparingApplicationId);
+  const interviewersQuery = useQuery({
+    queryKey: ["interviews", "interviewers"],
+    queryFn: () => api.get<InterviewerOption[]>("/interviews/interviewers"),
+    enabled: Boolean(preparingApplicationId)
+  });
   const updateStage = useMutation({
     mutationFn: ({ id, stage }: { id: string; stage: string }) => api.patch(`/applications/${id}`, { stage }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["job", jobId] })
@@ -210,7 +216,8 @@ function Pipeline({ applications, jobId }: { applications: Application[]; jobId:
     onError: (error) => showInterviewKitError(error)
   });
   const createInterview = useMutation({
-    mutationFn: ({ id, stage }: { id: string; stage: string }) => api.post<{ id: string }>("/interviews", { applicationId: id, interviewRound: stage }),
+    mutationFn: ({ id, stage, interviewerId }: { id: string; stage: string; interviewerId: string }) =>
+      api.post<{ id: string }>("/interviews", { applicationId: id, interviewRound: stage, interviewerId }),
     onSuccess: (interview) => {
       message.success("面试工作台已创建");
       queryClient.invalidateQueries({ queryKey: ["job", jobId] });
@@ -259,7 +266,14 @@ function Pipeline({ applications, jobId }: { applications: Application[]; jobId:
                             onChange={(value) => updateStage.mutate({ id: application.id, stage: value })}
                             style={{ width: 160 }}
                           />
-                          <Button size="small" disabled={!readiness.canPrepare} onClick={() => setPreparingApplicationId(application.id)}>
+                          <Button
+                            size="small"
+                            disabled={!readiness.canPrepare}
+                            onClick={() => {
+                              setSelectedInterviewerId(undefined);
+                              setPreparingApplicationId(application.id);
+                            }}
+                          >
                             面试准备
                           </Button>
                           {readiness.interview ? (
@@ -282,9 +296,16 @@ function Pipeline({ applications, jobId }: { applications: Application[]; jobId:
         open={Boolean(preparingApplication)}
         generating={generateKit.isPending}
         creating={createInterview.isPending}
-        onClose={() => setPreparingApplicationId(undefined)}
+        interviewerId={selectedInterviewerId}
+        interviewers={interviewersQuery.data ?? []}
+        interviewersLoading={interviewersQuery.isLoading}
+        onInterviewerChange={setSelectedInterviewerId}
+        onClose={() => {
+          setPreparingApplicationId(undefined);
+          setSelectedInterviewerId(undefined);
+        }}
         onGenerateKit={(application, stage) => generateKit.mutate({ id: application.id, stage })}
-        onCreateInterview={(application, stage) => createInterview.mutate({ id: application.id, stage })}
+        onCreateInterview={(application, stage, interviewerId) => createInterview.mutate({ id: application.id, stage, interviewerId })}
       />
     </>
   );
@@ -330,15 +351,23 @@ function InterviewPreparationModal({
   creating,
   onClose,
   onGenerateKit,
-  onCreateInterview
+  onCreateInterview,
+  interviewerId,
+  interviewers,
+  interviewersLoading,
+  onInterviewerChange
 }: {
   application?: Application;
   open: boolean;
   generating: boolean;
   creating: boolean;
+  interviewerId?: string;
+  interviewers: InterviewerOption[];
+  interviewersLoading: boolean;
   onClose: () => void;
   onGenerateKit: (application: Application, stage: string) => void;
-  onCreateInterview: (application: Application, stage: string) => void;
+  onCreateInterview: (application: Application, stage: string, interviewerId: string) => void;
+  onInterviewerChange: (interviewerId?: string) => void;
 }) {
   if (!application) return null;
   const readiness = getInterviewReadiness(application);
@@ -392,11 +421,30 @@ function InterviewPreparationModal({
                 {readiness.kit ? "套件已就绪，可以创建面试官工作台。" : "请先生成面试套件，再创建面试官工作台。"}
               </Typography.Text>
             )}
+            {!readiness.interview ? (
+              <Select
+                showSearch
+                allowClear
+                loading={interviewersLoading}
+                disabled={!readiness.kit || creating}
+                placeholder="选择面试官"
+                value={interviewerId}
+                onChange={onInterviewerChange}
+                optionFilterProp="label"
+                style={{ width: 320, maxWidth: "100%" }}
+                options={interviewers.map((user) => ({
+                  value: user.id,
+                  label: `${user.name} · ${user.email}`
+                }))}
+              />
+            ) : null}
             <Button
               type="primary"
               loading={creating}
-              disabled={!readiness.kit || Boolean(readiness.interview)}
-              onClick={() => onCreateInterview(application, stage)}
+              disabled={!readiness.kit || Boolean(readiness.interview) || !interviewerId}
+              onClick={() => {
+                if (interviewerId) onCreateInterview(application, stage, interviewerId);
+              }}
             >
               创建面试工作台
             </Button>

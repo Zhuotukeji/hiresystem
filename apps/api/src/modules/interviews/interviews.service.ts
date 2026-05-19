@@ -8,11 +8,23 @@ export class InterviewsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateInterviewDto) {
+    if (!dto.interviewerId) {
+      throw new BadRequestException("请选择面试官");
+    }
+
     const application = await this.prisma.application.findUnique({
       where: { id: dto.applicationId },
       include: { candidate: true, job: true }
     });
     if (!application) throw new NotFoundException("Application not found");
+
+    const interviewer = await this.prisma.user.findFirst({
+      where: { id: dto.interviewerId, isActive: true },
+      select: { id: true }
+    });
+    if (!interviewer) {
+      throw new BadRequestException("面试官账号不存在或已禁用");
+    }
 
     return this.prisma.interview.create({
       data: {
@@ -23,6 +35,54 @@ export class InterviewsService {
         interviewerId: dto.interviewerId,
         scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : undefined
       }
+    });
+  }
+
+  async myTasks(userId: string) {
+    const interviews = await this.prisma.interview.findMany({
+      where: {
+        interviewerId: userId,
+        status: "SCHEDULED"
+      },
+      include: {
+        candidate: { select: { id: true, name: true, currentCompanyName: true, currentTitle: true } },
+        job: { select: { id: true, title: true, department: true } },
+        feedback: { select: { id: true } }
+      },
+      orderBy: [{ createdAt: "desc" }],
+      take: 50
+    });
+
+    return interviews
+      .sort((left, right) => {
+        const leftTime = left.scheduledAt?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const rightTime = right.scheduledAt?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        if (leftTime !== rightTime) return leftTime - rightTime;
+        return right.createdAt.getTime() - left.createdAt.getTime();
+      })
+      .slice(0, 20)
+      .map((interview) => ({
+        interviewId: interview.id,
+        candidateId: interview.candidateId,
+        candidateName: interview.candidate.name,
+        candidateTitle: interview.candidate.currentTitle,
+        candidateCompany: interview.candidate.currentCompanyName,
+        jobId: interview.jobId,
+        jobTitle: interview.job.title,
+        jobDepartment: interview.job.department,
+        interviewRound: interview.interviewRound,
+        status: interview.status,
+        scheduledAt: interview.scheduledAt,
+        createdAt: interview.createdAt,
+        hasFeedback: Boolean(interview.feedback)
+      }));
+  }
+
+  interviewers() {
+    return this.prisma.user.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, email: true, role: true },
+      orderBy: [{ role: "asc" }, { name: "asc" }]
     });
   }
 

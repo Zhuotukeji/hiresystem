@@ -1,4 +1,4 @@
-import { IsArray, IsIn, IsOptional, IsString } from "class-validator";
+import { IsArray, IsIn, IsNotEmpty, IsOptional, IsString } from "class-validator";
 import { interviewConclusions } from "@hiresystem/shared";
 
 export class CreateInterviewDto {
@@ -8,9 +8,9 @@ export class CreateInterviewDto {
   @IsString()
   interviewRound!: string;
 
-  @IsOptional()
   @IsString()
-  interviewerId?: string;
+  @IsNotEmpty()
+  interviewerId!: string;
 
   @IsOptional()
   @IsString()
