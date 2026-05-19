@@ -197,9 +197,14 @@ function Pipeline({ applications, jobId }: { applications: Application[]; jobId:
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["job", jobId] })
   });
   const generateKit = useMutation({
-    mutationFn: ({ id, stage }: { id: string; stage: string }) => api.post("/ai/interview-kits", { applicationId: id, stage }),
-    onSuccess: () => {
-      message.success("面试套件已生成");
+    mutationFn: ({ id, stage }: { id: string; stage: string }) =>
+      api.post<{ status: string; ai_status?: string; ai_error?: string }>("/ai/interview-kits", { applicationId: id, stage }),
+    onSuccess: (response) => {
+      if (response.status === "fallback_completed") {
+        message.warning(`AI生成失败，已使用基础模板生成面试套件${response.ai_error ? `：${response.ai_error}` : ""}`);
+      } else {
+        message.success("面试套件已生成");
+      }
       queryClient.invalidateQueries({ queryKey: ["job", jobId] });
     },
     onError: (error) => showInterviewKitError(error)

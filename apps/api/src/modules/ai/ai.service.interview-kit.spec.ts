@@ -22,9 +22,46 @@ describe("AiService interview kit generation", () => {
       })
     );
   });
+
+  it("creates a fallback interview kit when AI generation fails", async () => {
+    const { service, prisma } = createService(new Error("upstream timeout"));
+
+    const result = await service.generateInterviewKit("application-1", "first_interview", "user-1");
+
+    expect(result.status).toBe("fallback_completed");
+    expect(result.ai_status).toBe("failed");
+    expect(result.result.goal).toContain("AI生成失败");
+    expect(result.result.must_ask_questions.length).toBeGreaterThan(0);
+    expect(prisma.aiTask.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "task-1" },
+        data: expect.objectContaining({
+          status: "FAILED",
+          errorMessage: "upstream timeout"
+        })
+      })
+    );
+    expect(prisma.interviewKit.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          stage: "first_interview",
+          goal: expect.stringContaining("AI生成失败")
+        })
+      })
+    );
+  });
 });
 
-function createService() {
+function createService(aiResult: unknown = {
+  data: {
+    interviewKit: {
+      interviewStage: "一面",
+      objective: "验证候选人的项目深度",
+      mustAskQuestions: [{ title: "请介绍一个最复杂的项目", evaluationPoints: ["个人贡献"], reason: "验证项目深度" }]
+    }
+  },
+  usage: { prompt_tokens: 1, completion_tokens: 1 }
+}) {
   const application = {
     id: "application-1",
     candidateId: "candidate-1",
@@ -70,16 +107,7 @@ function createService() {
   };
   const aiProvider = {
     model: "test-model",
-    completeJson: vi.fn().mockResolvedValue({
-      data: {
-        interviewKit: {
-          interviewStage: "一面",
-          objective: "验证候选人的项目深度",
-          mustAskQuestions: [{ title: "请介绍一个最复杂的项目", evaluationPoints: ["个人贡献"], reason: "验证项目深度" }]
-        }
-      },
-      usage: { prompt_tokens: 1, completion_tokens: 1 }
-    })
+    completeJson: aiResult instanceof Error ? vi.fn().mockRejectedValue(aiResult) : vi.fn().mockResolvedValue(aiResult)
   };
 
   return { prisma, service: new AiService(prisma as never, aiProvider as never) };

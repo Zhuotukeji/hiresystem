@@ -483,9 +483,11 @@ export class AiService {
     };
     const task = await this.createTask(AiTaskType.INTERVIEW_KIT, inputSnapshot, userId);
 
+    let response: { data: unknown; usage?: { prompt_tokens?: number; completion_tokens?: number } } | undefined;
+    let result: InterviewKitResult;
+    let aiError: unknown;
+
     try {
-      let response;
-      let result: InterviewKitResult;
       try {
         response = await this.aiProvider.completeJson(this.interviewKitMessages(inputSnapshot, stage), {
           temperature: 0,
@@ -504,37 +506,52 @@ export class AiService {
         );
         result = this.parseInterviewKitResult(response.data, stage);
       }
-      await this.completeTask(task.id, result, response.usage);
-
-      const kit = await this.prisma.interviewKit.create({
-        data: {
-          applicationId,
-          candidateId: application.candidateId,
-          jobId: application.jobId,
-          stage: result.stage,
-          aiTaskId: task.id,
-          goal: result.goal,
-          focusAreas: result.focus_areas,
-          mustAskQuestions: result.must_ask_questions as Prisma.InputJsonValue,
-          resumeBasedQuestions: result.resume_based_questions as Prisma.InputJsonValue,
-          caseQuestions: result.case_questions as Prisma.InputJsonValue,
-          goodSignals: result.good_signals,
-          badSignals: result.bad_signals,
-          passCriteria: result.pass_criteria,
-          redFlags: result.red_flags,
-          createdBy: userId
-        }
-      });
-
-      return {
-        interview_kit_id: kit.id,
-        status: "completed",
-        result
-      };
     } catch (error) {
-      await this.failTask(task.id, error);
-      throw error;
+      aiError = error;
+      result = this.buildFallbackInterviewKit(application, stage, error);
+      await this.failTask(task.id, error).catch((failTaskError) => {
+        this.logger.error(
+          `Failed to mark interview kit task failed task=${task.id}: ${failTaskError instanceof Error ? failTaskError.stack ?? failTaskError.message : String(failTaskError)}`
+        );
+      });
+      this.logger.error(
+        `AI interview kit failed; using fallback kit task=${task.id} application=${applicationId} stage=${stage}: ${
+          error instanceof Error ? error.stack ?? error.message : String(error)
+        }`
+      );
     }
+
+    if (!aiError) {
+      await this.completeTask(task.id, result, response?.usage);
+    }
+
+    const kit = await this.prisma.interviewKit.create({
+      data: {
+        applicationId,
+        candidateId: application.candidateId,
+        jobId: application.jobId,
+        stage: result.stage,
+        aiTaskId: task.id,
+        goal: result.goal,
+        focusAreas: result.focus_areas,
+        mustAskQuestions: result.must_ask_questions as Prisma.InputJsonValue,
+        resumeBasedQuestions: result.resume_based_questions as Prisma.InputJsonValue,
+        caseQuestions: result.case_questions as Prisma.InputJsonValue,
+        goodSignals: result.good_signals,
+        badSignals: result.bad_signals,
+        passCriteria: result.pass_criteria,
+        redFlags: result.red_flags,
+        createdBy: userId
+      }
+    });
+
+    return {
+      interview_kit_id: kit.id,
+      status: aiError ? "fallback_completed" : "completed",
+      ai_status: aiError ? "failed" : "completed",
+      ai_error: aiError ? this.compactText(aiError instanceof Error ? aiError.message : String(aiError), 240) : undefined,
+      result
+    };
   }
 
   async generateStageHandoff(params: {
@@ -743,6 +760,141 @@ export class AiService {
         .join("; ")}`);
     }
     return parsed.data;
+  }
+
+  private buildFallbackInterviewKit(
+    application: {
+      candidate: {
+        name?: string | null;
+        currentTitle?: string | null;
+        currentCompanyName?: string | null;
+        aiSummary?: string | null;
+        tags?: string[];
+      };
+      job: {
+        title?: string | null;
+        profile?: {
+          mission?: string | null;
+          mustHaveSkills?: string[];
+          interviewDimensions?: string[];
+          screeningQuestions?: string[];
+          knockoutRules?: string[];
+        } | null;
+      };
+      evaluations?: Array<{
+        risks?: string[];
+        questionsToConfirm?: string[];
+        reasons?: string[];
+        suggestedNextStep?: string | null;
+      }>;
+    },
+    stage: string,
+    error: unknown
+  ): InterviewKitResult {
+    const candidate = application.candidate;
+    const job = application.job;
+    const profile = job.profile;
+    const evaluation = application.evaluations?.[0];
+    const jobTitle = job.title || "目标岗位";
+    const candidateName = candidate.name || "候选人";
+    const focusAreas = this.uniqueStrings([
+      ...(profile?.interviewDimensions ?? []),
+      ...(profile?.mustHaveSkills ?? []),
+      ...(evaluation?.risks ?? []).map((risk) => `风险确认：${risk}`),
+      "岗位匹配度",
+      "经历真实性"
+    ]).slice(0, 8);
+    const confirmQuestions = this.uniqueStrings([
+      ...(evaluation?.questionsToConfirm ?? []),
+      ...(profile?.screeningQuestions ?? [])
+    ]).slice(0, 6);
+    const aiError = this.compactText(error instanceof Error ? error.message : String(error), 120);
+
+    return {
+      stage: this.normalizeInterviewKitStage(stage),
+      goal: `AI生成失败，已使用基础模板：验证${candidateName}与${jobTitle}的匹配度，并确认关键风险。`,
+      focus_areas: focusAreas,
+      must_ask_questions: [
+        {
+          question: `请用3分钟介绍你和「${jobTitle}」最相关的一段经历。`,
+          evaluation_points: ["经历相关性", "表达结构", "个人贡献"],
+          purpose: "快速判断候选人与目标岗位的核心匹配度"
+        },
+        {
+          question: "请讲一个你最近主导或深度参与的项目/事项：目标是什么，你负责什么，结果如何衡量？",
+          evaluation_points: ["目标拆解", "个人角色", "结果指标"],
+          purpose: "验证简历经历真实性和项目深度"
+        },
+        {
+          question: `你理解这个${jobTitle}岗位入职后最需要解决的问题是什么？你会如何切入？`,
+          evaluation_points: ["岗位理解", "业务判断", "落地思路"],
+          purpose: "判断候选人是否理解岗位真实挑战"
+        }
+      ],
+      resume_based_questions: confirmQuestions.length
+        ? confirmQuestions.map((question) => ({
+            question,
+            evaluation_points: ["事实清晰度", "证据完整度"],
+            purpose: "补齐简历和AI判断中的待确认信息"
+          }))
+        : [
+            {
+              question: `请补充说明你当前/最近在${candidate.currentCompanyName || "上一家公司"}担任${candidate.currentTitle || "相关职位"}时的主要职责边界。`,
+              evaluation_points: ["职责范围", "组织位置", "真实贡献"],
+              purpose: "确认候选人当前背景和职责"
+            }
+          ],
+      case_questions: [
+        {
+          question: `如果入职后发现业务方对${jobTitle}的预期和岗位JD不完全一致，你会如何澄清目标并推进？`,
+          evaluation_points: ["沟通方式", "问题澄清", "推进策略"],
+          purpose: "观察候选人的业务协作和问题解决方式"
+        }
+      ],
+      good_signals: [
+        "能用具体事实、数据或案例说明个人贡献",
+        "能主动识别岗位挑战和业务约束",
+        "对过往经验中的成败原因有复盘"
+      ],
+      bad_signals: [
+        "回答停留在泛泛职责，缺少具体案例",
+        "无法说清个人贡献和结果指标",
+        "对岗位挑战理解明显偏差"
+      ],
+      pass_criteria: [
+        "关键经历与岗位核心要求基本匹配",
+        "风险点能通过事实解释清楚",
+        "沟通表达清晰，能进入下一轮深入验证"
+      ],
+      red_flags: this.uniqueStrings([
+        ...(profile?.knockoutRules ?? []),
+        "核心经历无法举证",
+        "关键信息与简历明显矛盾",
+        aiError ? `AI生成失败原因：${aiError}` : ""
+      ]).slice(0, 8)
+    };
+  }
+
+  private uniqueStrings(values: string[]) {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const value of values) {
+      const text = this.compactText(value, 120);
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+      result.push(text);
+    }
+    return result;
+  }
+
+  private normalizeInterviewKitStage(stage: string): InterviewKitResult["stage"] {
+    if (stage === "first_interview" || stage === "second_interview" || stage === "final_interview" || stage === "hr_screen") {
+      return stage;
+    }
+    if (stage === "FIRST_INTERVIEW") return "first_interview";
+    if (stage === "SECOND_INTERVIEW") return "second_interview";
+    if (stage === "FINAL_INTERVIEW") return "final_interview";
+    return "hr_screen";
   }
 
   private parseResumeResult(raw: unknown, resumeText: string): ResumeParseResult {
